@@ -1,6 +1,7 @@
 import type { AiSettings, ProviderAdapter, ProviderConfig } from '../types'
 
-const STORAGE_KEY = 'zhiforge.ai-settings.v1'
+const STORAGE_KEY = 'learnweave.ai-settings.v1'
+const LEGACY_STORAGE_KEY = 'zhiforge.ai-settings.v1'
 
 export const PROVIDER_BASES: Record<ProviderAdapter, string> = {
   'openai-compatible': 'https://api.openai.com/v1',
@@ -33,11 +34,13 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
 
 export function loadAiSettings(): AiSettings {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const current = localStorage.getItem(STORAGE_KEY)
+    const legacy = current ? null : localStorage.getItem(LEGACY_STORAGE_KEY)
+    const raw = current || legacy
     if (!raw) return DEFAULT_AI_SETTINGS
     const parsed = JSON.parse(raw) as Partial<AiSettings>
     const adapter = isProviderAdapter(parsed.adapter) ? parsed.adapter : DEFAULT_AI_SETTINGS.adapter
-    return {
+    const settings: AiSettings = {
       providerId: typeof parsed.providerId === 'string' ? parsed.providerId : undefined,
       credentialId: typeof parsed.credentialId === 'string' ? parsed.credentialId : undefined,
       adapter,
@@ -48,6 +51,11 @@ export function loadAiSettings(): AiSettings {
       targetLanguage: typeof parsed.targetLanguage === 'string' ? parsed.targetLanguage : '简体中文',
       alternateLanguage: typeof parsed.alternateLanguage === 'string' ? parsed.alternateLanguage : 'English'
     }
+    if (legacy) {
+      saveAiSettings(settings)
+      localStorage.removeItem(LEGACY_STORAGE_KEY)
+    }
+    return settings
   } catch {
     return DEFAULT_AI_SETTINGS
   }
@@ -59,11 +67,12 @@ export function saveAiSettings(settings: AiSettings) {
 }
 
 export function hasStoredAiSettings() {
-  return localStorage.getItem(STORAGE_KEY) !== null
+  return localStorage.getItem(STORAGE_KEY) !== null || localStorage.getItem(LEGACY_STORAGE_KEY) !== null
 }
 
 export function clearStoredAiSettings() {
   localStorage.removeItem(STORAGE_KEY)
+  localStorage.removeItem(LEGACY_STORAGE_KEY)
 }
 
 export function isAiConfigured(settings: AiSettings) {
