@@ -5,6 +5,10 @@ use reqwest::{header::LOCATION, redirect::Policy, Client, Url};
 use serde::Serialize;
 use tokio::{net::lookup_host, time::timeout};
 
+use crate::knowledge::SourceCaptureInput;
+
+use super::{Capabilities, ConnectorError, FetchedContent, SourceConnector};
+
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
 const DNS_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REDIRECTS: usize = 5;
@@ -17,6 +21,44 @@ pub struct WebUrlFetchResult {
     pub url: String,
     pub title: Option<String>,
     pub text: String,
+}
+
+pub struct WebUrlConnector;
+
+impl SourceConnector for WebUrlConnector {
+    fn id(&self) -> &'static str {
+        "web-url"
+    }
+
+    fn capabilities(&self) -> Capabilities {
+        Capabilities { search: false, fetch: true }
+    }
+
+    async fn fetch(&self, locator: &str) -> Result<FetchedContent, ConnectorError> {
+        let fetched = web_url_fetch(locator.to_string()).await.map_err(ConnectorError::from)?;
+        Ok(FetchedContent {
+            url: Some(fetched.url),
+            title: fetched.title,
+            author: None,
+            text: fetched.text,
+        })
+    }
+
+    fn to_source(&self, content: &FetchedContent, selection: Option<&str>) -> SourceCaptureInput {
+        SourceCaptureInput {
+            platform: "web".into(),
+            source_kind: Some("web".into()),
+            connector_id: Some(self.id().into()),
+            selected_text: selection.unwrap_or(&content.text).to_string(),
+            url: content.url.clone(),
+            title: content.title.clone(),
+            author: content.author.clone(),
+            context_before: None,
+            context_after: None,
+            application: None,
+            window_title: None,
+        }
+    }
 }
 
 #[tauri::command]
