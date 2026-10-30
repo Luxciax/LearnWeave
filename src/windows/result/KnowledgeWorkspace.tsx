@@ -1,7 +1,9 @@
 import { listen } from '@tauri-apps/api/event'
-import { Activity, BookOpen, FileText, Inbox as InboxIcon, Library, RotateCcw, Search, Settings2, Sparkles, Tags, Telescope, Waypoints } from 'lucide-react'
+import { Activity, BookOpen, FileText, Inbox as InboxIcon, Library, Plus, RotateCcw, Search, Settings2, Sparkles, Tags, Telescope, Waypoints } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { getCurrentReviewSession } from '../../services/knowledge-service'
+import { CaptureDialog } from './CaptureDialog'
+import { DiscoverView } from './DiscoverView'
 import { InboxView } from './InboxView'
 import { KnowledgeGraphView } from './KnowledgeGraphView'
 import { KnowledgeHome } from './KnowledgeHome'
@@ -13,7 +15,6 @@ import { TaskCenterView } from './TaskCenterView'
 import { TodayView } from './TodayView'
 import { TopicExpansionView } from './TopicExpansionView'
 import { TopicsView } from './TopicsView'
-import { ZhihuSearchView } from './ZhihuSearchView'
 import './knowledge-workspace.css'
 
 type WorkspaceView = 'search' | 'expand' | 'today' | 'inbox' | 'tasks' | 'organize' | 'library' | 'sources' | 'topics' | 'graph' | 'review'
@@ -21,23 +22,21 @@ type WorkspaceView = 'search' | 'expand' | 'today' | 'inbox' | 'tasks' | 'organi
 interface KnowledgeWorkspaceProps {
   onOpenSettings: () => void
   searchRequest?: { query: string; nonce: number } | null
+  onSearchRequestConsumed?: () => void
 }
 
 const NAV_ITEMS: Array<{ id: WorkspaceView; label: string; icon: typeof Search }> = [
-  { id: 'search', label: '搜知乎', icon: Search },
-  { id: 'expand', label: '主题扩充', icon: Telescope },
   { id: 'today', label: '今天', icon: BookOpen },
   { id: 'inbox', label: '收件箱', icon: InboxIcon },
-  { id: 'tasks', label: 'AI 任务', icon: Activity },
-  { id: 'organize', label: '整理建议', icon: Sparkles },
   { id: 'library', label: '知识库', icon: Library },
-  { id: 'sources', label: '来源', icon: FileText },
+  { id: 'search', label: '发现', icon: Search },
   { id: 'topics', label: '主题', icon: Tags },
-  { id: 'graph', label: '地图', icon: Waypoints },
-  { id: 'review', label: '复习', icon: RotateCcw }
+  { id: 'review', label: '复习', icon: RotateCcw },
+  { id: 'sources', label: '来源', icon: FileText },
+  { id: 'tasks', label: 'AI 任务', icon: Activity }
 ]
 
-export function KnowledgeWorkspace({ onOpenSettings, searchRequest = null }: KnowledgeWorkspaceProps) {
+export function KnowledgeWorkspace({ onOpenSettings, searchRequest = null, onSearchRequestConsumed }: KnowledgeWorkspaceProps) {
   const [view, setView] = useState<WorkspaceView>('today')
   const [selectedKnowledgeId, setSelectedKnowledgeId] = useState<string | null>(null)
   const [selectedQuestionId, setSelectedQuestionId] = useState<string | null>(null)
@@ -48,6 +47,7 @@ export function KnowledgeWorkspace({ onOpenSettings, searchRequest = null }: Kno
   const [selectedInboxId, setSelectedInboxId] = useState<string | null>(null)
   const [researchTarget, setResearchTarget] = useState<{ planId: string | null; gapId: string | null }>({ planId: null, gapId: null })
   const [searchSeed, setSearchSeed] = useState('')
+  const [captureOpen, setCaptureOpen] = useState(false)
 
   useEffect(() => {
     if (!searchRequest) return
@@ -58,7 +58,8 @@ export function KnowledgeWorkspace({ onOpenSettings, searchRequest = null }: Kno
     setGraphCenterId(null)
     setSearchSeed(searchRequest.query)
     setView('search')
-  }, [searchRequest?.nonce])
+    onSearchRequestConsumed?.()
+  }, [searchRequest?.nonce, onSearchRequestConsumed])
 
   useEffect(() => {
     let disposed = false
@@ -73,16 +74,6 @@ export function KnowledgeWorkspace({ onOpenSettings, searchRequest = null }: Kno
         setGraphCenterId(null)
         setSearchSeed('')
         setView('today')
-      }),
-      listen<string>('zhihu://search-request', (event) => {
-        if (disposed) return
-        setSelectedKnowledgeId(null)
-        setSelectedQuestionId(null)
-        setLibraryTopicId(null)
-        setSelectedSourceId(null)
-        setGraphCenterId(null)
-        setSearchSeed(event.payload || '')
-        setView('search')
       })
     ]).then((unlisteners) => {
       if (disposed) unlisteners.forEach((unlisten) => unlisten())
@@ -156,6 +147,7 @@ export function KnowledgeWorkspace({ onOpenSettings, searchRequest = null }: Kno
       return (
         <KnowledgeHome
           onOpenSettings={onOpenSettings}
+          listenForAppNavigation={false}
           initialKnowledgeId={selectedKnowledgeId}
           initialQuestionId={selectedQuestionId}
           detailBackLabel={view === 'expand' ? '主题扩充' : view === 'inbox' ? '收件箱' : view === 'tasks' ? 'AI 任务' : view === 'organize' ? '整理建议' : view === 'library' ? '知识库' : view === 'sources' ? '来源' : view === 'topics' ? '主题' : view === 'graph' ? '知识地图' : view === 'review' ? '学习与复习' : '今天'}
@@ -176,13 +168,14 @@ export function KnowledgeWorkspace({ onOpenSettings, searchRequest = null }: Kno
 
     if (view === 'search') {
       return (
-        <ZhihuSearchView
+        <DiscoverView
           initialQuery={searchSeed}
           onBack={() => {
             setSearchSeed('')
             setView('today')
           }}
           onCaptured={() => undefined}
+          onOpenCapture={() => setCaptureOpen(true)}
           onOpenSettings={onOpenSettings}
         />
       )
@@ -202,6 +195,9 @@ export function KnowledgeWorkspace({ onOpenSettings, searchRequest = null }: Kno
       return (
         <TodayView
           onOpenInbox={openInbox}
+          onOpenCapture={() => setCaptureOpen(true)}
+          onOpenSearch={() => changeView('search')}
+          onOpenSettings={onOpenSettings}
           onOpenReview={() => changeView('review')}
           onOpenResearch={openResearch}
           onOpenKnowledge={openKnowledge}
@@ -287,6 +283,10 @@ export function KnowledgeWorkspace({ onOpenSettings, searchRequest = null }: Kno
           <BookOpen size={17} strokeWidth={1.8} />
           <strong>ZhiForge</strong>
         </div>
+        <button className="knowledge-capture-button" type="button" onClick={() => setCaptureOpen(true)}>
+          <Plus size={16} strokeWidth={1.9} />
+          <span>捕获</span>
+        </button>
         <nav>
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon
@@ -310,6 +310,15 @@ export function KnowledgeWorkspace({ onOpenSettings, searchRequest = null }: Kno
         </div>
       </aside>
       <div className="knowledge-workspace-content">{content}</div>
+      {captureOpen && (
+        <CaptureDialog
+          onClose={() => setCaptureOpen(false)}
+          onCaptured={() => {
+            setCaptureOpen(false)
+            openInbox()
+          }}
+        />
+      )}
     </section>
   )
 }

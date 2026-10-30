@@ -385,11 +385,11 @@ async fn run_internalization_job(
         extract_batch.knowledge_units.len() as i64,
         None,
     )?;
-    persist_extraction_drafts(app, job_id, &captured, extract_batch)?;
-    if let Err(analysis_error) = inbox::analyze_drafts_for_anchor(app, knowledge_unit_id).await {
-        let warning = format!("知识草稿已保存，但重复/冲突分析失败：{analysis_error}");
-        inbox::mark_analysis_ready(app, knowledge_unit_id, Some(&warning))?;
-    }
+    persist_extraction_drafts(app, &captured, extract_batch)?;
+    inbox::analyze_drafts_for_anchor(app, knowledge_unit_id)
+        .await
+        .map_err(|error| format!("duplicate/conflict analysis failed: {error}"))?;
+    set_job_status(app, job_id, "completed", None)?;
 
     let _ = app.emit(
         "knowledge://changed",
@@ -505,14 +505,10 @@ Schema:
 Each evidence entry must be an exact contiguous quotation copied from selected_text. Every core claim must have its own supporting evidence. Each core_claim must be meaningfully distinct."#
         .replace("{max_units}", &max_units.to_string());
     let user = source_payload_with_text(captured, source_text)?;
-    match run_structured_with_repair(app, "knowledge_extract", &system, &user, |value| {
+    run_structured_with_repair(app, "knowledge_extract", &system, &user, |value| {
         validate_extract_batch(value, source_text, max_units)
     })
     .await
-    {
-        Ok(batch) => Ok(batch),
-        Err(_) => fallback_extract_batch(source_text, max_units),
-    }
 }
 
 fn extraction_unit_limit(source_text: &str) -> usize {
@@ -521,103 +517,6 @@ fn extraction_unit_limit(source_text: &str) -> usize {
         2_501..=7_000 => 8,
         _ => 12,
     }
-}
-
-fn fallback_extract_batch(source_text: &str, max_units: usize) -> Result<ExtractBatchSchema, String> {
-    let source_text = source_text.trim();
-    if source_text.is_empty() {
-        return Err("source text is empty".into());
-    }
-    let mut knowledge_units = Vec::new();
-    let mut seen_claims = HashSet::new();
-    for chunk in split_source_text(source_text, 650) {
-        if knowledge_units.len() >= max_units.max(1) {
-            break;
-        }
-        let evidence = chunk.trim();
-        if evidence.is_empty() {
-            continue;
-        }
-        let claim = summarize_fallback_claim(evidence, 180);
-        let claim_key = claim.to_lowercase();
-        if claim.is_empty() || !seen_claims.insert(claim_key) {
-            continue;
-        }
-        knowledge_units.push(ExtractSchema {
-            core_claim: claim,
-            concepts: Vec::new(),
-            prerequisites: Vec::new(),
-            important_details: Vec::new(),
-            limitations: Vec::new(),
-            evidence: vec![evidence.to_string()],
-        });
-    }
-    if knowledge_units.is_empty() {
-        knowledge_units.push(ExtractSchema {
-            core_claim: summarize_fallback_claim(source_text, 180),
-            concepts: Vec::new(),
-            prerequisites: Vec::new(),
-            important_details: Vec::new(),
-            limitations: Vec::new(),
-            evidence: vec![source_text.chars().take(1200).collect()],
-        });
-    }
-    validate_extract_batch(
-        ExtractBatchSchema { knowledge_units },
-        source_text,
-        max_units.max(1),
-    )
-}
-
-fn summarize_fallback_claim(value: &str, max_chars: usize) -> String {
-    let normalized = value.split_whitespace().collect::<Vec<_>>().join(" ");
-    let mut claim = normalized.chars().take(max_chars).collect::<String>();
-    if normalized.chars().count() > max_chars {
-        claim.push('…');
-    }
-    claim
-}
-
-fn fallback_question_batch(
-    units: &[ExtractSchema],
-    source_text: &str,
-) -> Result<QuestionBatchSchema, String> {
-    let knowledge_units = units
-        .iter()
-        .enumerate()
-        .map(|(knowledge_index, unit)| {
-            let evidence = unit
-                .evidence
-                .first()
-                .cloned()
-                .unwrap_or_else(|| source_text.trim().chars().take(800).collect());
-            let reference = summarize_fallback_claim(&unit.core_claim, 320);
-            QuestionBatchUnitSchema {
-                knowledge_index,
-                questions: vec![
-                    QuestionSchema {
-                        question_type: "explain".into(),
-                        question: format!("请用自己的话解释这条知识：{}", reference),
-                        reference_points: vec![reference.clone()],
-                        evidence: vec![evidence.clone()],
-                        difficulty: 2,
-                    },
-                    QuestionSchema {
-                        question_type: "recall".into(),
-                        question: "不看原文时，你能复述这条知识的核心结论吗？".into(),
-                        reference_points: vec![reference],
-                        evidence: vec![evidence],
-                        difficulty: 1,
-                    },
-                ],
-            }
-        })
-        .collect::<Vec<_>>();
-    validate_question_batch(
-        QuestionBatchSchema { knowledge_units },
-        units.len(),
-        source_text,
-    )
 }
 
 fn split_source_text(source_text: &str, target_chars: usize) -> Vec<String> {
@@ -695,14 +594,10 @@ Return exactly one entry for every input knowledge_index, with no missing or dup
             "knowledge_units": units,
         }))
         .map_err(|error| format!("failed to serialize question-generation input: {error}"))?;
-        let mut batch = match run_structured_with_repair(app, "question_generation", system, &user, |value| {
+        let mut batch = run_structured_with_repair(app, "question_generation", system, &user, |value| {
             validate_question_batch(value, units.len(), &captured.source.selected_text)
         })
-        .await
-        {
-            Ok(batch) => batch,
-            Err(_) => fallback_question_batch(units, &captured.source.selected_text)?,
-        };
+        .await?;
         for unit in &mut batch.knowledge_units {
             unit.knowledge_index += base_index;
         }
@@ -1120,7 +1015,6 @@ fn source_payload_with_text(
 
 fn persist_extraction_drafts(
     app: &AppHandle,
-    job_id: &str,
     captured: &CaptureKnowledgeResult,
     extract_batch: ExtractBatchSchema,
 ) -> Result<(), String> {
@@ -1170,12 +1064,6 @@ fn persist_extraction_drafts(
                 )
                 .map_err(|error| format!("failed to save knowledge draft: {error}"))?;
         }
-        transaction
-            .execute(
-                "UPDATE ai_jobs SET status = 'completed', error = NULL, updated_at = ?2 WHERE id = ?1",
-                params![job_id, now],
-            )
-            .map_err(|error| format!("failed to complete extraction AI job: {error}"))?;
         transaction
             .execute(
                 "UPDATE inbox_items SET
@@ -1774,32 +1662,6 @@ mod tests {
         let source = "吞吐量表示单位时间实际通过网络的数据量。";
         assert!(ground_evidence_quote(source, "吞吐量就是网络理论上的最大带宽。").is_err());
         assert!(validate_extract(extract("Invented", "吞吐量就是网络理论上的最大带宽。"), source).is_err());
-    }
-
-    #[test]
-    fn fallback_extraction_is_grounded_and_bounded() {
-        let source = "第一条知识说明系统应先保存来源，再生成草稿。\n\n第二条知识说明草稿确认后才进入正式知识库。";
-        let batch = fallback_extract_batch(source, 4).unwrap();
-        assert!(!batch.knowledge_units.is_empty());
-        assert!(batch.knowledge_units.len() <= 4);
-        for unit in batch.knowledge_units {
-            assert!(!unit.core_claim.is_empty());
-            assert!(unit.evidence.iter().all(|quote| source.contains(quote)));
-        }
-    }
-
-    #[test]
-    fn fallback_questions_are_grounded_and_complete() {
-        let source = "知识草稿需要用户确认后才进入正式知识库。";
-        let units = vec![extract("知识草稿需要确认后入库", source)];
-        let batch = fallback_question_batch(&units, source).unwrap();
-        assert_eq!(batch.knowledge_units.len(), 1);
-        assert_eq!(batch.knowledge_units[0].questions.len(), 2);
-        assert!(batch.knowledge_units[0]
-            .questions
-            .iter()
-            .flat_map(|question| question.evidence.iter())
-            .all(|quote| source.contains(quote)));
     }
 
     #[test]

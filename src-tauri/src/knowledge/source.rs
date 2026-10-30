@@ -7,7 +7,7 @@ use crate::database::DatabaseState;
 use super::internalization::SourceKnowledgeUnitSummary;
 use super::SourceRecord;
 
-const SOURCE_PLATFORMS: &[&str] = &["zhihu", "web", "pdf", "desktop", "unknown"];
+const SOURCE_PLATFORMS: &[&str] = &["zhihu", "web", "pdf", "desktop", "manual", "unknown"];
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]

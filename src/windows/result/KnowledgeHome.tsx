@@ -89,6 +89,7 @@ const PLATFORM_LABELS: Record<SourcePlatform, string> = {
   web: '网页',
   pdf: 'PDF',
   desktop: '桌面',
+  manual: '手动',
   unknown: '来源未知'
 }
 
@@ -121,6 +122,24 @@ function reviewSource(item: ReviewQueueItem) {
   return item.author || item.title || PLATFORM_LABELS[item.platform]
 }
 
+function friendlyAiJobError(error: string | null | undefined) {
+  if (!error) return 'AI 处理没有完成，可以重新尝试。'
+  const normalized = error.toLowerCase()
+  if (normalized.includes('evidence') || normalized.includes('source quote')) {
+    return '模型返回的证据无法与原文对应，请重新处理。'
+  }
+  if (normalized.includes('json') || normalized.includes('schema') || normalized.includes('structured output')) {
+    return '模型返回格式不完整，请重新处理。'
+  }
+  if (normalized.includes('duplicate/conflict analysis')) {
+    return '知识草稿已生成，但重复检查失败，请重新处理。'
+  }
+  if (normalized.includes('provider') || normalized.includes('api key') || normalized.includes('route') || normalized.includes('model')) {
+    return 'AI 模型暂不可用，请检查模型配置后重试。'
+  }
+  return 'AI 处理没有完成，可以重新尝试。'
+}
+
 function sourceWithHighlightedEvidence(text: string, evidence: EvidenceRecord | null) {
   if (!evidence) return { before: text, highlight: '', after: '' }
   const chars = Array.from(text)
@@ -149,6 +168,7 @@ interface KnowledgeHomeProps {
   onDetailClose?: () => void
   onReviewContinue?: () => void
   onOpenGraph?: (knowledgeUnitId: string) => void
+  listenForAppNavigation?: boolean
 }
 
 export function KnowledgeHome({
@@ -158,7 +178,8 @@ export function KnowledgeHome({
   detailBackLabel = '最近知识',
   onDetailClose,
   onReviewContinue,
-  onOpenGraph
+  onOpenGraph,
+  listenForAppNavigation = true
 }: KnowledgeHomeProps) {
   const [items, setItems] = useState<KnowledgeListItem[]>([])
   const [reviewQueue, setReviewQueue] = useState<ReviewQueueItem[]>([])
@@ -173,6 +194,7 @@ export function KnowledgeHome({
   const [questionError, setQuestionError] = useState<string | null>(null)
   const [sourceOpen, setSourceOpen] = useState(false)
   const [focusedEvidenceId, setFocusedEvidenceId] = useState<string | null>(null)
+  const [quizFocused, setQuizFocused] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [librarianOpen, setLibrarianOpen] = useState(false)
   const [searchSeed, setSearchSeed] = useState('')
@@ -217,6 +239,7 @@ export function KnowledgeHome({
         listKnowledgeLibrary({ includeArchived: false, limit: 200 })
       ])
       setDetail(nextDetail)
+      if (nextDetail.questions.length === 0) setQuizFocused(false)
       setManagement(nextManagement)
       setAvailableTopics(topicList)
       setRelationCandidates(candidates.filter((item) => item.id !== knowledgeUnitId))
@@ -248,6 +271,7 @@ export function KnowledgeHome({
     setPreferredQuestionId(questionId)
     setSourceOpen(false)
     setFocusedEvidenceId(null)
+    setQuizFocused(true)
     setTrashConfirming(false)
     setSelectedId(knowledgeUnitId)
     void refreshDetail(knowledgeUnitId)
@@ -258,6 +282,7 @@ export function KnowledgeHome({
     setPreferredQuestionId(null)
     setSourceOpen(false)
     setFocusedEvidenceId(null)
+    setQuizFocused(false)
     setTrashConfirming(false)
     setDetail(null)
     setManagement(null)
@@ -471,21 +496,23 @@ export function KnowledgeHome({
           void refreshDetail(selectedId)
         }
       }),
-      listen<string>('zhihu://search-request', (event) => {
-        if (disposed) return
-        setSelectedId(null)
-        setDetail(null)
-        setSearchSeed(event.payload || '')
-        setSearchOpen(true)
-      }),
-      listen('app://home', () => {
-        if (disposed) return
-        setSearchOpen(false)
-        setSearchSeed('')
-        setSelectedId(null)
-        setPreferredQuestionId(null)
-        setDetail(null)
-      })
+      ...(listenForAppNavigation ? [
+        listen<string>('zhihu://search-request', (event) => {
+          if (disposed) return
+          setSelectedId(null)
+          setDetail(null)
+          setSearchSeed(event.payload || '')
+          setSearchOpen(true)
+        }),
+        listen('app://home', () => {
+          if (disposed) return
+          setSearchOpen(false)
+          setSearchSeed('')
+          setSelectedId(null)
+          setPreferredQuestionId(null)
+          setDetail(null)
+        })
+      ] : [])
     ]).then((unlisteners) => {
       if (disposed) unlisteners.forEach((unlisten) => unlisten())
       else cleanup.push(...unlisteners)
@@ -496,7 +523,7 @@ export function KnowledgeHome({
       window.removeEventListener('focus', handleFocus)
       cleanup.forEach((unlisten) => unlisten())
     }
-  }, [refresh, refreshDetail, selectedId])
+  }, [listenForAppNavigation, refresh, refreshDetail, selectedId])
 
   if (librarianOpen) {
     return (
@@ -564,7 +591,7 @@ export function KnowledgeHome({
               <div className="knowledge-job-banner failed">
                 <div>
                   <strong>{detail.knowledgeUnit.coreClaim && detail.questions.length === 0 ? '知识已提炼，理解题生成失败。' : '原文已保存，AI 处理失败。'}</strong>
-                  <span className="knowledge-job-error">{detail.aiJob.error || '没有返回可用的错误信息。'}</span>
+                  <span className="knowledge-job-error" title={detail.aiJob.error ?? undefined}>{friendlyAiJobError(detail.aiJob.error)}</span>
                 </div>
                 {detail.knowledgeUnit.coreClaim && detail.evidence.length > 0 && detail.questions.length === 0 ? (
                   <button type="button" onClick={() => void generateQuestions()} disabled={questionGenerating}>
@@ -581,7 +608,7 @@ export function KnowledgeHome({
             )}
 
             {detail.knowledgeUnit.coreClaim && (
-              <section className="knowledge-detail-card primary">
+              <section className="knowledge-detail-card primary" hidden={quizFocused}>
                 <div className="knowledge-section-heading">
                   <span className="knowledge-detail-label">核心知识</span>
                   {detail.reviewState && <span>{detail.reviewState.reviewCount === 0 ? '待检验' : `${STATUS_LABELS[detail.knowledgeUnit.status]} · ${detail.reviewState.masteryScore}%`}</span>}
@@ -595,7 +622,7 @@ export function KnowledgeHome({
               </section>
             )}
 
-            <section className="knowledge-detail-section knowledge-basis-section">
+            <section className="knowledge-detail-section knowledge-basis-section" hidden={quizFocused}>
               <div className="knowledge-section-heading">
                 <span className="knowledge-detail-label">知识依据</span>
                 <span className={`knowledge-quality-badge ${detail.qualityState.status}`}>{QUALITY_LABELS[detail.qualityState.status]}</span>
@@ -650,7 +677,7 @@ export function KnowledgeHome({
               )}
             </section>
 
-            <section className="knowledge-detail-section knowledge-note-section">
+            <section className="knowledge-detail-section knowledge-note-section" hidden={quizFocused}>
               <div className="knowledge-section-heading">
                 <span className="knowledge-detail-label">我的理解</span>
                 <span>只由你编辑，AI 不会自动覆盖</span>
@@ -738,7 +765,7 @@ export function KnowledgeHome({
             )}
 
             {(detail.knowledgeUnit.prerequisites.length > 0 || detail.knowledgeUnit.importantDetails.length > 0 || detail.knowledgeUnit.limitations.length > 0) && (
-              <details className="knowledge-structure-section">
+              <details className="knowledge-structure-section" hidden={quizFocused}>
                 <summary>查看知识结构</summary>
                 {detail.knowledgeUnit.prerequisites.length > 0 && (
                   <div><strong>前置知识</strong><ul>{detail.knowledgeUnit.prerequisites.map((item) => <li key={item}>{item}</li>)}</ul></div>
@@ -828,6 +855,7 @@ export function KnowledgeHome({
                   void refresh()
                   if (selectedId) void refreshDetail(selectedId)
                 }}
+                onFocusModeChange={setQuizFocused}
                 onContinueReview={() => {
                   if (onReviewContinue) {
                     onReviewContinue()
@@ -867,6 +895,7 @@ export function KnowledgeHome({
 
             <details
               ref={sourceRef}
+              hidden={quizFocused}
               className={`knowledge-source-card${focusedEvidenceId ? ' evidence-focused' : ''}`}
               open={sourceOpen}
               onToggle={(event) => setSourceOpen(event.currentTarget.open)}>
@@ -986,7 +1015,7 @@ export function KnowledgeHome({
         ) : loadFailed ? (
           <button type="button" className="knowledge-home-retry" onClick={() => void refresh()}>读取失败，重试</button>
         ) : items.length === 0 ? (
-          <div className="knowledge-home-empty">在知乎搜索或外部阅读时选中有价值的内容，点「内化」后会出现在这里。</div>
+          <div className="knowledge-home-empty">把有价值的内容加入收件箱，提炼并确认接收后会出现在这里。</div>
         ) : (
           <div className="knowledge-home-list">
             {items.map((item) => (

@@ -1,5 +1,5 @@
-import { ArrowLeft, ExternalLink, Search } from 'lucide-react'
-import { type FormEvent, useCallback, useEffect, useState } from 'react'
+import { AlertTriangle, ArrowLeft, ExternalLink, Search } from 'lucide-react'
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { getSourceDetail, listSources, openSourceUrl } from '../../services/knowledge-service'
 import type { KnowledgeStatus, SourceDetailRecord, SourceLibraryItem, SourcePlatform } from '../../types'
 
@@ -14,6 +14,7 @@ const PLATFORM_LABELS: Record<SourcePlatform, string> = {
   web: '网页',
   pdf: 'PDF',
   desktop: '桌面',
+  manual: '手动',
   unknown: '未知来源'
 }
 
@@ -32,6 +33,7 @@ const PLATFORM_OPTIONS: Array<{ value: '' | SourcePlatform; label: string }> = [
   { value: 'web', label: '网页' },
   { value: 'pdf', label: 'PDF' },
   { value: 'desktop', label: '桌面' },
+  { value: 'manual', label: '手动' },
   { value: 'unknown', label: '未知来源' }
 ]
 
@@ -44,6 +46,13 @@ function sourceExcerpt(value: string) {
   return text.length > 180 ? `${text.slice(0, 180)}…` : text
 }
 
+function zhihuDuplicateKey(item: SourceLibraryItem) {
+  if (item.platform !== 'zhihu' || !item.url) return null
+  const canonicalUrl = item.url.split('#')[0].split('?')[0].replace(/\/+$/, '')
+  const normalizedText = item.selectedText.replace(/\s+/g, ' ').trim()
+  return canonicalUrl && normalizedText ? `${canonicalUrl}\u001f${normalizedText}` : null
+}
+
 export function SourceLibraryView({ initialSourceId = null, onSourceChange, onOpenKnowledge }: SourceLibraryViewProps) {
   const [items, setItems] = useState<SourceLibraryItem[]>([])
   const [detail, setDetail] = useState<SourceDetailRecord | null>(null)
@@ -52,6 +61,22 @@ export function SourceLibraryView({ initialSourceId = null, onSourceChange, onOp
   const [platform, setPlatform] = useState<'' | SourcePlatform>('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  const duplicateSummary = useMemo(() => {
+    const groups = new Map<string, string[]>()
+    for (const item of items) {
+      const key = zhihuDuplicateKey(item)
+      if (!key) continue
+      const ids = groups.get(key) ?? []
+      ids.push(item.id)
+      groups.set(key, ids)
+    }
+    const duplicateGroups = [...groups.values()].filter((ids) => ids.length > 1)
+    return {
+      groupCount: duplicateGroups.length,
+      sourceIds: new Set(duplicateGroups.flat())
+    }
+  }, [items])
 
   const refreshList = useCallback(async () => {
     setLoading(true)
@@ -186,6 +211,13 @@ export function SourceLibraryView({ initialSourceId = null, onSourceChange, onOp
         </label>
       </div>
 
+      {duplicateSummary.groupCount > 0 && (
+        <div className="source-duplicate-notice">
+          <AlertTriangle size={14} strokeWidth={1.8} />
+          <span>当前列表发现 {duplicateSummary.groupCount} 组历史重复来源：知乎链接和正文完全一致。这里只做诊断，不会自动合并旧数据。</span>
+        </div>
+      )}
+
       {error ? (
         <button type="button" className="workspace-error" onClick={() => void refreshList()}>读取失败，点击重试</button>
       ) : loading ? (
@@ -194,20 +226,24 @@ export function SourceLibraryView({ initialSourceId = null, onSourceChange, onOp
         <div className="workspace-empty">没有符合当前条件的来源。</div>
       ) : (
         <div className="source-list">
-          {items.map((item) => (
-            <button type="button" className="source-item" key={item.id} onClick={() => openSource(item.id)}>
+          {items.map((item) => {
+            const duplicate = duplicateSummary.sourceIds.has(item.id)
+            return (
+            <button type="button" className={`source-item${duplicate ? ' duplicate-suspect' : ''}`} key={item.id} onClick={() => openSource(item.id)}>
               <div className="source-item-main">
                 <div className="source-item-meta">
                   <span>{PLATFORM_LABELS[item.platform]}</span>
                   {item.author && <strong>{item.author}</strong>}
                   <small>{new Date(item.capturedAt).toLocaleDateString()}</small>
+                  {duplicate && <em>历史重复</em>}
                 </div>
                 <h3>{sourceTitle(item)}</h3>
                 <p>{sourceExcerpt(item.selectedText)}</p>
               </div>
               <div className="source-item-count"><b>{item.knowledgeCount}</b><span>条知识</span></div>
             </button>
-          ))}
+            )
+          })}
         </div>
       )}
     </section>

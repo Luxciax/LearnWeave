@@ -6,8 +6,11 @@ import {
   Inbox,
   ListChecks,
   LoaderCircle,
+  Plus,
   RefreshCcw,
   RotateCcw,
+  Search,
+  Settings2,
   Sparkles,
   Telescope,
   TriangleAlert
@@ -18,6 +21,9 @@ import './today-view.css'
 
 interface TodayViewProps {
   onOpenInbox: (inboxId?: string | null) => void
+  onOpenCapture: () => void
+  onOpenSearch: () => void
+  onOpenSettings: () => void
   onOpenReview: () => void
   onOpenResearch: (planId?: string | null, gapId?: string | null) => void
   onOpenKnowledge: (knowledgeUnitId: string, questionId?: string | null) => void
@@ -70,6 +76,9 @@ const INBOX_LABELS: Record<string, string> = {
 
 export function TodayView({
   onOpenInbox,
+  onOpenCapture,
+  onOpenSearch,
+  onOpenSettings,
   onOpenReview,
   onOpenResearch,
   onOpenKnowledge,
@@ -152,6 +161,26 @@ export function TodayView({
       </header>
 
       {error && <div className="today-error"><CircleAlert size={14} strokeWidth={1.8} /><span>{error}</span></div>}
+
+      {actionCount === 0 && (
+        <section className="today-start-card" aria-label="开始使用">
+          <div>
+            <strong>开始一条知识链</strong>
+            <span>捕获一段文本或网页，让它进入收件箱提炼；也可以去发现页从已配置的外部来源寻找内容。</span>
+          </div>
+          <div className="today-start-actions">
+            <button type="button" className="primary" onClick={onOpenCapture}>
+              <Plus size={13} strokeWidth={1.9} />捕获内容
+            </button>
+            <button type="button" onClick={onOpenSearch}>
+              <Search size={13} strokeWidth={1.9} />去发现
+            </button>
+            <button type="button" onClick={onOpenSettings}>
+              <Settings2 size={13} strokeWidth={1.9} />模型设置
+            </button>
+          </div>
+        </section>
+      )}
 
       <div className="today-summary-grid">
         <button type="button" onClick={() => onOpenInbox()} className={overview.inboxCapturedCount + overview.inboxReadyCount + overview.inboxFailedCount > 0 ? 'attention' : undefined}>

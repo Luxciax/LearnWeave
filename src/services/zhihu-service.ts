@@ -1,12 +1,14 @@
 import { invoke } from '@tauri-apps/api/core'
+import { emit } from '@tauri-apps/api/event'
 import type { ZhihuSearchResult } from '../types'
 
 export function isZhihuAccessSecretConfigured() {
   return invoke<boolean>('zhihu_access_secret_configured')
 }
 
-export function saveZhihuAccessSecret(accessSecret: string) {
-  return invoke<void>('zhihu_save_access_secret', { accessSecret })
+export async function saveZhihuAccessSecret(accessSecret: string) {
+  await invoke<void>('zhihu_save_access_secret', { accessSecret })
+  void emit('discover://sources-changed', { connectorId: 'zhihu' }).catch(() => undefined)
 }
 
 export function searchZhihu(query: string, count = 10) {

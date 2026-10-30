@@ -46,6 +46,9 @@ jobs:
       - name: Type-check frontend
         run: pnpm check
 
+      - name: Run Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+
       - name: Build and publish Tauri release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: tauri-apps/tauri-action@v0
@@ -63,7 +66,7 @@ jobs:
             - Persistent review sessions and planning for first-learning and due knowledge
             - Research-plan history with linked-source revisit and duplicate-capture detection
             - Topic editing/archive/restore and global tag rename/empty-tag cleanup
-            - Source-grounded extraction/questions with demo-safe structured-output fallback
+            - Source-grounded extraction/questions with explicit failure and retry handling
             - More robust Windows first-launch window handling
             - Backup, restore, export, audit, semantic search, graph and source library
 

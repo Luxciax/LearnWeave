@@ -84,6 +84,7 @@ export function ZhihuSearchView({ initialQuery, onBack, onCaptured, onOpenSettin
   const [capturing, setCapturing] = useState<CaptureTarget | null>(null)
   const [captureMessage, setCaptureMessage] = useState<string | null>(null)
   const [sort, setSort] = useState<SearchSort>('relevance')
+  const [rateLimited, setRateLimited] = useState(false)
   const readerRef = useRef<HTMLDivElement | null>(null)
 
   const runSearch = useCallback(async (nextQuery?: string) => {
@@ -96,6 +97,7 @@ export function ZhihuSearchView({ initialQuery, onBack, onCaptured, onOpenSettin
       setError('搜索内容不能超过 100 个字符，请先精简问题。')
       return
     }
+    if (rateLimited) return
     setQuery(value)
     setLoading(true)
     setExpanded(false)
@@ -106,16 +108,21 @@ export function ZhihuSearchView({ initialQuery, onBack, onCaptured, onOpenSettin
     try {
       setResult(await searchZhihu(value, 10))
     } catch (searchError) {
+      const message = String(searchError)
       setResult(null)
-      setError(String(searchError))
+      setError(message)
+      if (message.includes('Code=30001')) {
+        setRateLimited(true)
+        window.setTimeout(() => setRateLimited(false), 5_000)
+      }
     } finally {
       setLoading(false)
     }
-  }, [query])
+  }, [query, rateLimited])
 
   const expandSearch = useCallback(async () => {
     const value = query.replace(/\s+/g, ' ').trim()
-    if (!result || value.length < 2 || expanding || expanded) return
+    if (!result || value.length < 2 || expanding || expanded || rateLimited) return
     setExpanding(true)
     setExpandError(null)
     try {
@@ -127,11 +134,16 @@ export function ZhihuSearchView({ initialQuery, onBack, onCaptured, onOpenSettin
       } : extra)
       setExpanded(true)
     } catch (searchError) {
-      setExpandError(String(searchError))
+      const message = String(searchError)
+      setExpandError(message)
+      if (message.includes('Code=30001')) {
+        setRateLimited(true)
+        window.setTimeout(() => setRateLimited(false), 5_000)
+      }
     } finally {
       setExpanding(false)
     }
-  }, [expanded, expanding, query, result])
+  }, [expanded, expanding, query, rateLimited, result])
 
   useEffect(() => {
     const nextQuery = queryFromSelection(initialQuery)
@@ -245,7 +257,7 @@ export function ZhihuSearchView({ initialQuery, onBack, onCaptured, onOpenSettin
               type="button"
               className="zhihu-reader-internalize"
               disabled={!reader.contentText.trim() || Boolean(capturing)}
-              title="把当前回答全文作为 Source，由 AI 按内容量提炼多条独立知识"
+              title={reader.contentText.trim() ? '把当前回答全文作为 Source，由 AI 按内容量提炼多条独立知识' : '当前搜索结果没有返回正文，请打开知乎后使用划词入口'}
               onClick={captureFullAnswer}>
               {capturing === 'full' ? <LoaderCircle size={14} strokeWidth={1.8} className="spin" /> : <BookmarkPlus size={14} strokeWidth={1.8} />}
               {capturing === 'full' ? '正在加入' : '加入收件箱'}
@@ -261,9 +273,16 @@ export function ZhihuSearchView({ initialQuery, onBack, onCaptured, onOpenSettin
               {reader.voteUpCount > 0 && <small>{metric(reader.voteUpCount)} 赞同</small>}
             </div>
             <h2>{reader.title || '知乎回答'}</h2>
+            {!reader.contentText.trim() && (
+              <div className="zhihu-reader-missing-content">
+                <strong>这条搜索结果没有返回可提炼正文</strong>
+                <span>可以打开知乎阅读原文；如果要收入知识库，在知乎页面选中文字后使用划词入口。</span>
+                {reader.url && <button type="button" onClick={() => void openSourceUrl(reader.url)}><ExternalLink size={13} strokeWidth={1.8} />打开知乎</button>}
+              </div>
+            )}
             <div
               ref={readerRef}
-              className="zhihu-reader-content"
+              className={`zhihu-reader-content${reader.contentText.trim() ? '' : ' missing'}`}
               tabIndex={0}
               onMouseUp={handleReaderSelection}
               onKeyUp={handleReaderSelection}>
@@ -298,7 +317,7 @@ export function ZhihuSearchView({ initialQuery, onBack, onCaptured, onOpenSettin
       <form className="zhihu-search-form" onSubmit={submit}>
         <Search size={18} strokeWidth={1.8} />
         <input autoFocus value={query} maxLength={100} placeholder="搜问题、经验、方法…" onChange={(event) => setQuery(event.target.value)} />
-        <button type="submit" disabled={loading || query.trim().length < 2}>{loading ? <LoaderCircle size={15} strokeWidth={1.8} className="spin" /> : '搜索'}</button>
+        <button type="submit" disabled={loading || rateLimited || query.trim().length < 2}>{loading ? <LoaderCircle size={15} strokeWidth={1.8} className="spin" /> : rateLimited ? '稍后重试' : '搜索'}</button>
       </form>
 
       {initialNormalized.length > 100 && (
@@ -330,7 +349,7 @@ export function ZhihuSearchView({ initialQuery, onBack, onCaptured, onOpenSettin
           <button
             type="button"
             className="zhihu-search-expand"
-            disabled={expanding || expanded}
+            disabled={expanding || expanded || rateLimited}
             title="使用知乎开放平台全网搜索并限定 zhihu.com，补充当前站内搜索结果"
             onClick={() => void expandSearch()}>
             {expanding && <LoaderCircle size={13} strokeWidth={1.8} className="spin" />}

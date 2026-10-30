@@ -25,13 +25,13 @@ Open **收件箱**. Wait for extraction to finish, inspect the generated drafts,
 
 What to say: AI proposes atomic knowledge units and evidence, but the user controls what becomes formal knowledge. Evidence remains linked to the exact source text.
 
-The demo build has a source-grounded fallback: if the configured model returns malformed structured JSON or a formatting-only evidence mismatch, the workflow still produces safe drafts instead of failing the demo.
+If extraction, evidence validation, or duplicate classification fails, the Inbox shows an explicit retryable failure. It does not silently convert malformed AI output into accepted-looking drafts.
 
 ### 3. Show that knowledge becomes learnable
 
-Open the accepted knowledge item. Show its source evidence and generated understanding questions. Answer one question or show the question-generation action.
+Open the accepted knowledge item and start one understanding question. Before submission, ZhiForge hides the core claim, evidence, personal note, knowledge structure, and original text. Submit an answer, then show the revealed evidence and source link.
 
-What to say: the goal is not another bookmark collection. Knowledge becomes something the user can recall, explain, test, and review.
+What to say: the goal is not another bookmark collection. Knowledge becomes something the user must actively recall first, then verify against the original source.
 
 ### 4. Show the daily loop
 
@@ -55,7 +55,7 @@ If live Zhihu search is unavailable:
 2. Capture it into ZhiForge.
 3. Continue from **收件箱** → **知识库** → **今天**.
 
-If an AI response is malformed, the build automatically falls back to deterministic source-grounded extraction/question generation, so the core demo can continue.
+If an AI response is malformed, the item enters an explicit failed state. Fix the Provider/model issue if necessary and use the retry path; do not present degraded deterministic output as successful AI internalization.
 
 If an AI task fails or remains stuck for too long:
 
@@ -68,4 +68,4 @@ If an AI task fails or remains stuck for too long:
 
 The graph, advanced curation, backup/restore, deep review scheduling, and semantic search are useful supporting features, but they are not required to prove the primary product story. Keep the judge flow focused on:
 
-**Source → Inbox → Confirmed Knowledge → Questions → Today → Topic Research**
+**Source → Inbox → Review/Accept → Focused Recall → Evidence → Today → Topic Research**

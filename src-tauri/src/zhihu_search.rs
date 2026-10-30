@@ -129,6 +129,18 @@ fn normalized_query(query: &str) -> Result<String, String> {
     Ok(query)
 }
 
+fn api_error(label: &str, code: i64, message: &str) -> String {
+    if code == 30001 {
+        return format!("{label}请求过于频繁，请至少等待 5 秒后重试（Code=30001）");
+    }
+    let message = message.trim();
+    if message.is_empty() {
+        format!("{label}失败（Code={code}）")
+    } else {
+        format!("{label}失败（Code={code}）：{message}")
+    }
+}
+
 fn deduplicate_search_items(items: Vec<ZhihuSearchItem>) -> Vec<ZhihuSearchItem> {
     let mut seen = HashSet::new();
     items
@@ -214,10 +226,7 @@ pub async fn zhihu_search(query: String, count: Option<u32>) -> Result<ZhihuSear
     let payload = serde_json::from_str::<ApiResponse<ZhihuSearchData>>(&body)
         .map_err(|error| format!("知乎搜索响应格式异常: {error}"))?;
     if payload.code != 0 {
-        return Err(format!(
-            "知乎搜索失败（Code={}）：{}",
-            payload.code, payload.message
-        ));
+        return Err(api_error("知乎搜索", payload.code, &payload.message));
     }
     let data = payload
         .data
@@ -272,7 +281,7 @@ pub async fn zhihu_global_search(query: String, count: Option<u32>) -> Result<Zh
     let payload = serde_json::from_str::<ApiResponse<GlobalSearchData>>(&body)
         .map_err(|error| format!("知乎扩展搜索响应格式异常: {error}"))?;
     if payload.code != 0 {
-        return Err(format!("知乎扩展搜索失败（Code={}）：{}", payload.code, payload.message));
+        return Err(api_error("知乎扩展搜索", payload.code, &payload.message));
     }
     let data = payload
         .data
@@ -294,6 +303,20 @@ mod tests {
         assert_eq!(normalized_query("  RAG   评测  ").unwrap(), "RAG 评测");
         assert!(normalized_query("a").is_err());
         assert!(normalized_query(&"x".repeat(101)).is_err());
+    }
+
+    #[test]
+    fn rate_limit_api_error_is_actionable() {
+        let error = api_error("知乎搜索", 30001, "rate limited");
+        assert!(error.contains("请求过于频繁"));
+        assert!(error.contains("5 秒"));
+        assert!(error.contains("30001"));
+    }
+
+    #[test]
+    fn ordinary_api_error_keeps_code_and_message() {
+        let error = api_error("知乎搜索", 123, "bad request");
+        assert_eq!(error, "知乎搜索失败（Code=123）：bad request");
     }
 
     #[test]

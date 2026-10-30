@@ -23,7 +23,8 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { clearStoredAiSettings, hasStoredAiSettings, isAiConfigured, loadAiSettings, saveAiSettings } from '../../ai/config'
 import { sanitizeModelOutput } from '../../ai/output'
-import { bootstrapV2Settings } from '../../services/provider-service'import type {
+import { bootstrapV2Settings } from '../../services/provider-service'
+import type {
   ActionRequest,
   AiChunkEvent,
   AiDoneEvent,
@@ -33,14 +34,18 @@ import { bootstrapV2Settings } from '../../services/provider-service'import typ
   AiStartedEvent,
   RoutedAiActionRunRequest
 } from '../../types'
-import { KnowledgeWorkspace } from './KnowledgeWorkspace'import { WorkspaceErrorBoundary } from './WorkspaceErrorBoundary'import { ProviderSettings } from './ProviderSettings'
+import { KnowledgeWorkspace } from './KnowledgeWorkspace'
+import { WorkspaceErrorBoundary } from './WorkspaceErrorBoundary'
+import { ProviderSettings } from './ProviderSettings'
 
-const BUILTIN_ACTION_TITLES: Record<string, string> = {  translate: '翻译',
+const BUILTIN_ACTION_TITLES: Record<string, string> = {
+  translate: '翻译',
   explain: '解释',
   summarize: '总结',
   polish: '润色'
 }
-function actionTitle(request: ActionRequest | null): string {
+
+function actionTitle(request: ActionRequest | null): string {
   if (!request) return 'ZhiForge'
   return request.actionName || BUILTIN_ACTION_TITLES[request.action] || request.action
 }
@@ -51,8 +56,10 @@ const ERROR_LABELS: Record<AiErrorKind, string> = {
   timeout: '请求超时',
   network: '连接失败',
   provider: '渠道错误',
-  'malformed-stream': '响应异常',  'empty-response': '模型无输出',
-  interrupted: '连接中断',  config: '配置错误',
+  'malformed-stream': '响应异常',
+  'empty-response': '模型无输出',
+  interrupted: '连接中断',
+  config: '配置错误',
   'all-providers-failed': '所有模型均失败'
 }
 
@@ -63,7 +70,8 @@ interface ResultError {
 }
 
 function friendlyAiError(error: AiErrorEvent): ResultError {
-  const message = (() => {    switch (error.kind) {
+  const message = (() => {
+    switch (error.kind) {
       case 'auth': return 'API Key 未保存或无效，或当前账号没有访问该模型的权限'
       case 'rate-limit': return '渠道正在限流，或当前额度不足'
       case 'timeout': return '请求超时，请稍后重试'
@@ -96,6 +104,7 @@ export function ResultWindow() {
   const [loading, setLoading] = useState(false)
   const [executionInfo, setExecutionInfo] = useState<AiStartedEvent | null>(null)
   const [homeSearchRequest, setHomeSearchRequest] = useState<{ query: string; nonce: number } | null>(null)
+  const [workspaceResetNonce, setWorkspaceResetNonce] = useState(0)
 
   const settingsRef = useRef(settings)
   const requestRef = useRef<ActionRequest | null>(null)
@@ -106,7 +115,8 @@ export function ResultWindow() {
   const settingsRestoreSizeRef = useRef<LogicalSize | null>(null)
   const settingsRestorePositionRef = useRef<PhysicalPosition | null>(null)
 
-  useEffect(() => {    settingsRef.current = settings
+  useEffect(() => {
+    settingsRef.current = settings
   }, [settings])
 
   useEffect(() => {
@@ -257,6 +267,7 @@ export function ResultWindow() {
         requestRef.current = null
         setRequest(null)
         setHomeSearchRequest(null)
+        setWorkspaceResetNonce((value) => value + 1)
         setPinned(false)
         setShowOriginal(false)
         setCopiedOriginal(false)
@@ -277,6 +288,7 @@ export function ResultWindow() {
         requestRef.current = null
         setRequest(null)
         setHomeSearchRequest({ query: event.payload || '', nonce: Date.now() })
+        setWorkspaceResetNonce((value) => value + 1)
         setPinned(false)
         setShowOriginal(false)
         setCopiedOriginal(false)
@@ -401,16 +413,26 @@ export function ResultWindow() {
       <header className="result-titlebar" data-tauri-drag-region>
         <div className="result-title" data-tauri-drag-region>
           <BookOpenText size={14} strokeWidth={1.8} />
-          <span>{title}</span>        </div>
-        <div className="result-window-actions">          <button type="button" aria-label="设置" title="设置" onClick={() => setSettingsOpen(true)}>
-            <Settings2 size={14} strokeWidth={1.8} />          </button>
-          {!isHome && (            <>
-              <button className={pinned ? 'active' : undefined} type="button" aria-label={pinned ? '取消置顶' : '置顶'} title={pinned ? '取消置顶' : '置顶'} onClick={() => void togglePin()}>                <Pin size={14} strokeWidth={1.8} className={pinned ? 'pin-active' : undefined} />
-              </button>              <button type="button" aria-label={compact ? '舒展模式' : '紧凑模式'} title={compact ? '舒展模式' : '紧凑模式'} onClick={() => setCompact((value) => !value)}>
-                {compact ? <PanelTopOpen size={14} strokeWidth={1.8} /> : <PanelTopClose size={14} strokeWidth={1.8} />}              </button>
-            </>          )}
-          <button type="button" aria-label="最小化" title="最小化" onClick={minimizeWindow}>            <Minus size={15} strokeWidth={1.8} />
-          </button>          <button type="button" aria-label="最大化或还原" title="最大化或还原" onClick={toggleMaximizeWindow}>
+          <span>{title}</span>
+        </div>
+        <div className="result-window-actions">
+          <button type="button" aria-label="设置" title="设置" onClick={() => setSettingsOpen(true)}>
+            <Settings2 size={14} strokeWidth={1.8} />
+          </button>
+          {!isHome && (
+            <>
+              <button className={pinned ? 'active' : undefined} type="button" aria-label={pinned ? '取消置顶' : '置顶'} title={pinned ? '取消置顶' : '置顶'} onClick={() => void togglePin()}>
+                <Pin size={14} strokeWidth={1.8} className={pinned ? 'pin-active' : undefined} />
+              </button>
+              <button type="button" aria-label={compact ? '舒展模式' : '紧凑模式'} title={compact ? '舒展模式' : '紧凑模式'} onClick={() => setCompact((value) => !value)}>
+                {compact ? <PanelTopOpen size={14} strokeWidth={1.8} /> : <PanelTopClose size={14} strokeWidth={1.8} />}
+              </button>
+            </>
+          )}
+          <button type="button" aria-label="最小化" title="最小化" onClick={minimizeWindow}>
+            <Minus size={15} strokeWidth={1.8} />
+          </button>
+          <button type="button" aria-label="最大化或还原" title="最大化或还原" onClick={toggleMaximizeWindow}>
             <Maximize2 size={14} strokeWidth={1.8} />
           </button>
           <button className="close" type="button" aria-label="关闭" title="关闭" onClick={() => void closeWindow()}>
@@ -418,78 +440,85 @@ export function ResultWindow() {
           </button>
         </div>
       </header>
-      {isHome ? (
+
+      {isHome ? (
         <main className="home-body">
-          <WorkspaceErrorBoundary resetToken={homeSearchRequest}>
-            <KnowledgeWorkspace onOpenSettings={() => setSettingsOpen(true)} searchRequest={homeSearchRequest} />
+          <WorkspaceErrorBoundary resetToken={workspaceResetNonce}>
+            <KnowledgeWorkspace
+              onOpenSettings={() => setSettingsOpen(true)}
+              searchRequest={homeSearchRequest}
+              onSearchRequestConsumed={() => setHomeSearchRequest(null)}
+            />
           </WorkspaceErrorBoundary>
         </main>
       ) : (
-      <main className="result-body">
-        <div className="result-toolbar-row">
-          <div className="result-source-chip">{request.selection.programName || '选中文本'}</div>
-          <button className="show-original" type="button" onClick={() => setShowOriginal((value) => !value)}>
-            <span>{showOriginal ? '隐藏原文' : '显示原文'}</span>
-            <ChevronDown size={14} strokeWidth={1.8} className={showOriginal ? 'expanded' : undefined} />
-          </button>
-        </div>
-
-        {showOriginal && (
-          <section className="original-card">
-            <div className="original-text">{request.selection.text}</div>
-            <button type="button" className="copy-button" aria-label="复制原文" title="复制原文" onClick={() => void copyText(request.selection.text, 'original')}>
-              {copiedOriginal ? <Check size={14} strokeWidth={1.8} /> : <Copy size={14} strokeWidth={1.8} />}
+        <main className="result-body">
+          <div className="result-toolbar-row">
+            <div className="result-source-chip">{request.selection.programName || '选中文本'}</div>
+            <button className="show-original" type="button" onClick={() => setShowOriginal((value) => !value)}>
+              <span>{showOriginal ? '隐藏原文' : '显示原文'}</span>
+              <ChevronDown size={14} strokeWidth={1.8} className={showOriginal ? 'expanded' : undefined} />
             </button>
-          </section>
-        )}
-
-        <section className="result-content" aria-live="polite">
-          {content ? (
-            request.outputMode === 'plain-text' ? (
-              <div className="plain-result">{content}</div>
-            ) : (
-              <div className="markdown-result">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-              </div>
-            )
-          ) : loading ? (
-            <div className="result-empty"><LoaderCircle size={18} strokeWidth={1.7} className="spin" /><span>处理中</span></div>
-          ) : !executionInfo && !isAiConfigured(settings) ? (
-            <button type="button" className="configure-empty" onClick={() => setSettingsOpen(true)}>
-              <Settings2 size={17} strokeWidth={1.7} />
-              <span>配置模型</span>
-            </button>
-          ) : (
-            <div className="result-empty"><BookOpenText size={18} strokeWidth={1.6} /><span>等待结果</span></div>
-          )}
-        </section>
-
-        {error && (
-          <div className={`result-error ${error.kind}`} title={error.detail || error.message}>
-            <span>{ERROR_LABELS[error.kind]}</span>
-            <p>{error.message}</p>
           </div>
-        )}
-      </main>
+
+          {showOriginal && (
+            <section className="original-card">
+              <div className="original-text">{request.selection.text}</div>
+              <button type="button" className="copy-button" aria-label="复制原文" title="复制原文" onClick={() => void copyText(request.selection.text, 'original')}>
+                {copiedOriginal ? <Check size={14} strokeWidth={1.8} /> : <Copy size={14} strokeWidth={1.8} />}
+              </button>
+            </section>
+          )}
+
+          <section className="result-content" aria-live="polite">
+            {content ? (
+              request.outputMode === 'plain-text' ? (
+                <div className="plain-result">{content}</div>
+              ) : (
+                <div className="markdown-result">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+                </div>
+              )
+            ) : loading ? (
+              <div className="result-empty"><LoaderCircle size={18} strokeWidth={1.7} className="spin" /><span>处理中</span></div>
+            ) : !executionInfo && !isAiConfigured(settings) ? (
+              <button type="button" className="configure-empty" onClick={() => setSettingsOpen(true)}>
+                <Settings2 size={17} strokeWidth={1.7} />
+                <span>配置模型</span>
+              </button>
+            ) : (
+              <div className="result-empty"><BookOpenText size={18} strokeWidth={1.6} /><span>等待结果</span></div>
+            )}
+          </section>
+
+          {error && (
+            <div className={`result-error ${error.kind}`} title={error.detail || error.message}>
+              <span>{ERROR_LABELS[error.kind]}</span>
+              <p>{error.message}</p>
+            </div>
+          )}
+        </main>
       )}
 
-      {!isHome && <footer className="result-footer">
-        <div className="provider-status" title={`${effectiveProviderName} · ${effectiveAdapter} · ${effectiveModel || '未配置模型'}`}>
-          {effectiveModel || '未配置模型'}
-        </div>
-        <div className="result-actions">
-          {content && (
-            <button type="button" aria-label="复制结果" title="复制结果" onClick={() => void copyText(content, 'result')}>
-              {copiedResult ? <Check size={14} strokeWidth={1.8} /> : <Copy size={14} strokeWidth={1.8} />}
-            </button>
-          )}
-          {loading ? (
-            <button type="button" aria-label="停止" title="停止" onClick={() => void cancelAi()}><Square size={13} strokeWidth={1.8} /></button>
-          ) : (
-            <button type="button" aria-label="重新生成" title="重新生成" onClick={() => void runAction(request)}><RotateCw size={14} strokeWidth={1.8} /></button>
-          )}
-        </div>
-      </footer>}
+      {!isHome && (
+        <footer className="result-footer">
+          <div className="provider-status" title={`${effectiveProviderName} · ${effectiveAdapter} · ${effectiveModel || '未配置模型'}`}>
+            {effectiveModel || '未配置模型'}
+          </div>
+          <div className="result-actions">
+            {content && (
+              <button type="button" aria-label="复制结果" title="复制结果" onClick={() => void copyText(content, 'result')}>
+                {copiedResult ? <Check size={14} strokeWidth={1.8} /> : <Copy size={14} strokeWidth={1.8} />}
+              </button>
+            )}
+            {loading ? (
+              <button type="button" aria-label="停止" title="停止" onClick={() => void cancelAi()}><Square size={13} strokeWidth={1.8} /></button>
+            ) : (
+              <button type="button" aria-label="重新生成" title="重新生成" onClick={() => void runAction(request)}><RotateCw size={14} strokeWidth={1.8} /></button>
+            )}
+          </div>
+        </footer>
+      )}
 
       {settingsOpen && <ProviderSettings value={settings} onApply={applySettings} onClose={() => setSettingsOpen(false)} />}
     </div>
