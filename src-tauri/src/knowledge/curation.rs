@@ -29,13 +29,15 @@ You receive a small set of candidate knowledge pairs selected by deterministic l
 Classify each pair as exactly one of:
 - new: materially different knowledge; no curation action needed.
 - duplicate: substantially the same reusable knowledge claim; merging their evidence may be useful.
-- related: different claims with a meaningful semantic relationship.
-- conflict: claims that cannot both be accepted as written under the same conditions, or present materially opposing guidance that should remain visible.
-Do not call two items conflict merely because they apply to different scenarios. If scenario differences reconcile them, use related.
+- related: different claims with a meaningful semantic relationship, including complementary advice, trade-offs, preferences, or recommendations that can both be reasonable.
+- conflict: the two claims address the SAME concrete proposition, object, time frame, and conditions, and accepting one as written makes the other materially false or impossible to accept as written.
+A difference in preference, optimization goal, recommendation, emphasis, or usage scenario is NOT a conflict. If both can be true at the same time, or scenario differences reconcile them, classify related.
 For related, relation_type must be one of: related_to, supports, example_of, prerequisite_of, derived_from, extends.
 For conflict, relation_type must be contradicts.
 For duplicate/new, relation_type must be null.
 Do not invent IDs or outside facts. Confidence must be 0..1. Prefer NEW when evidence is insufficient.
+summary and every rationale MUST be concise Simplified Chinese. Product names and technical terms may remain in their original language.
+Before choosing conflict, explicitly test whether both claims can simultaneously be true. If yes, conflict is forbidden.
 Return exactly one JSON object and nothing else:
 {"summary":"short string","decisions":[{"left_id":"existing id","right_id":"existing id","classification":"new|duplicate|related|conflict","relation_type":null,"rationale":"short string","confidence":0.0}]}
 "#;
@@ -517,6 +519,9 @@ fn validate_output(
     input: &CurationInput,
 ) -> Result<CurationOutput, String> {
     output.summary = bounded_text(&output.summary, 600);
+    if !output.summary.is_empty() && !contains_cjk(&output.summary) {
+        return Err("curation summary must be Simplified Chinese".into());
+    }
     if output.decisions.len() > input.pairs.len() {
         return Err("curation returned more decisions than supplied pairs".into());
     }
@@ -542,6 +547,9 @@ fn validate_output(
         }
         decision.classification = decision.classification.trim().to_ascii_lowercase();
         decision.rationale = bounded_text(&decision.rationale, 700);
+        if decision.rationale.is_empty() || !contains_cjk(&decision.rationale) {
+            return Err("curation rationale must be Simplified Chinese".into());
+        }
         match decision.classification.as_str() {
             "new" => continue,
             "duplicate" => decision.relation_type = None,
@@ -977,6 +985,15 @@ fn required_id(value: &str, label: &str) -> Result<String, String> {
     }
 }
 
+fn contains_cjk(value: &str) -> bool {
+    value.chars().any(|character| {
+        matches!(
+            character as u32,
+            0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xF900..=0xFAFF
+        )
+    })
+}
+
 fn bounded_text(value: &str, max_chars: usize) -> String {
     value.trim().chars().take(max_chars).collect()
 }
@@ -1007,9 +1024,9 @@ mod tests {
     #[test]
     fn validator_keeps_actionable_and_drops_new_or_low_confidence() {
         let new_value: CurationOutput = serde_json::from_value(json!({
-            "summary": "review",
+            "summary": "复核",
             "decisions": [
-                {"left_id":"k1","right_id":"k2","classification":"new","relation_type":null,"rationale":"different","confidence":0.99}
+                {"left_id":"k1","right_id":"k2","classification":"new","relation_type":null,"rationale":"内容不同","confidence":0.99}
             ]
         }))
         .unwrap();
@@ -1019,9 +1036,9 @@ mod tests {
             .is_empty());
 
         let low_value: CurationOutput = serde_json::from_value(json!({
-            "summary": "review",
+            "summary": "复核",
             "decisions": [
-                {"left_id":"k1","right_id":"k2","classification":"duplicate","relation_type":null,"rationale":"similar","confidence":0.5}
+                {"left_id":"k1","right_id":"k2","classification":"duplicate","relation_type":null,"rationale":"内容相似","confidence":0.5}
             ]
         }))
         .unwrap();
@@ -1034,9 +1051,9 @@ mod tests {
     #[test]
     fn validator_normalizes_conflict_and_rejects_unknown_pair() {
         let conflict: CurationOutput = serde_json::from_value(json!({
-            "summary": "review",
+            "summary": "复核",
             "decisions": [
-                {"left_id":"k2","right_id":"k1","classification":"conflict","relation_type":null,"rationale":"opposed","confidence":0.91}
+                {"left_id":"k2","right_id":"k1","classification":"conflict","relation_type":null,"rationale":"结论相反","confidence":0.91}
             ]
         }))
         .unwrap();
@@ -1050,9 +1067,9 @@ mod tests {
         );
 
         let unknown: CurationOutput = serde_json::from_value(json!({
-            "summary": "review",
+            "summary": "复核",
             "decisions": [
-                {"left_id":"k1","right_id":"missing","classification":"duplicate","relation_type":null,"rationale":"same","confidence":0.9}
+                {"left_id":"k1","right_id":"missing","classification":"duplicate","relation_type":null,"rationale":"内容相同","confidence":0.9}
             ]
         }))
         .unwrap();

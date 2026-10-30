@@ -65,6 +65,40 @@ const CLASSIFICATION_LABELS = {
   conflict: '冲突'
 } as const
 
+function isSameInboxDuplicate(draft: InboxDetailRecord['drafts'][number]) {
+  return draft.classification === 'duplicate' && draft.relatedKnowledgeId == null && draft.confidence != null
+}
+
+function classificationLabel(draft: InboxDetailRecord['drafts'][number]) {
+  if (draft.classification === 'new' && draft.confidence == null) return '未判断'
+  if (isSameInboxDuplicate(draft)) return '同批重复'
+  return CLASSIFICATION_LABELS[draft.classification]
+}
+
+function isSuggestedDraft(draft: InboxDetailRecord['drafts'][number]) {
+  return draft.decision === 'pending'
+    && draft.confidence != null
+    && (draft.classification === 'new' || draft.classification === 'supplement')
+}
+
+function friendlyProcessingError(error: string | null) {
+  if (!error) return 'AI 处理失败，请重新尝试。'
+  const normalized = error.toLowerCase()
+  if (normalized.includes('evidence') || normalized.includes('source quote')) {
+    return '模型返回的证据无法与原文对应，请重新提炼。'
+  }
+  if (normalized.includes('json') || normalized.includes('schema') || normalized.includes('structured output')) {
+    return '模型返回格式不完整，请重新提炼。'
+  }
+  if (normalized.includes('duplicate/conflict analysis')) {
+    return '知识草稿已生成，但重复检查失败，请重新提炼。'
+  }
+  if (normalized.includes('provider') || normalized.includes('api key') || normalized.includes('route') || normalized.includes('model')) {
+    return 'AI 模型暂不可用，请检查模型配置后重试。'
+  }
+  return 'AI 处理没有完成，请重新尝试。'
+}
+
 interface DraftEditState {
   draftId: string
   coreClaim: string
@@ -134,9 +168,10 @@ export function InboxView({ initialInboxId = null, onOpenKnowledge }: InboxViewP
       setListFilter(inboxFilterForStatus(next.item.status))
       setSelectedDrafts((current) => {
         if (next.item.status !== 'ready') return new Set()
-        const valid = new Set(next.drafts.filter((draft) => draft.decision === 'pending').map((draft) => draft.id))
-        const retained = new Set([...current].filter((id) => valid.has(id)))
-        return retained.size > 0 ? retained : valid
+        const pending = new Set(next.drafts.filter((draft) => draft.decision === 'pending').map((draft) => draft.id))
+        const suggested = new Set(next.drafts.filter(isSuggestedDraft).map((draft) => draft.id))
+        const retained = new Set([...current].filter((id) => pending.has(id)))
+        return retained.size > 0 ? retained : suggested
       })
     } finally {
       setDetailLoading(false)
@@ -206,8 +241,12 @@ export function InboxView({ initialInboxId = null, onOpenKnowledge }: InboxViewP
   }), [items])
 
   const selectedCount = selectedDrafts.size
-  const allPendingDraftIds = useMemo(
-    () => detail?.drafts.filter((draft) => draft.decision === 'pending').map((draft) => draft.id) ?? [],
+  const hasBlockedSameInboxDuplicate = useMemo(
+    () => detail?.drafts.some((draft) => selectedDrafts.has(draft.id) && isSameInboxDuplicate(draft)) ?? false,
+    [detail, selectedDrafts]
+  )
+  const suggestedDraftIds = useMemo(
+    () => detail?.drafts.filter(isSuggestedDraft).map((draft) => draft.id) ?? [],
     [detail]
   )
 
@@ -227,6 +266,10 @@ export function InboxView({ initialInboxId = null, onOpenKnowledge }: InboxViewP
 
   const acceptSelected = async () => {
     if (!detail || selectedDrafts.size === 0 || action) return
+    if (hasBlockedSameInboxDuplicate) {
+      setError('同批重复草稿不能直接入库；如果这条其实值得独立保留，请先选中它并点「修正选中」，改为新知识。')
+      return
+    }
     setAction('accept')
     setError(null)
     try {
@@ -544,7 +587,7 @@ export function InboxView({ initialInboxId = null, onOpenKnowledge }: InboxViewP
                 {detail.item.status === 'failed' && (
                   <div className="inbox-action-card failed">
                     <CircleAlert size={17} strokeWidth={1.7} />
-                    <div><strong>AI 处理失败</strong><span>{detail.item.error || '没有返回错误信息。'}</span></div>
+                    <div><strong>AI 处理失败</strong><span title={detail.item.error ?? undefined}>{friendlyProcessingError(detail.item.error)}</span></div>
                     <button type="button" disabled={Boolean(action)} onClick={() => void runProcessing()}>
                       {action === 'process' ? <LoaderCircle size={13} className="spin" /> : <RefreshCw size={13} />}
                       重新提炼
@@ -572,8 +615,9 @@ export function InboxView({ initialInboxId = null, onOpenKnowledge }: InboxViewP
                         <button
                           type="button"
                           className="select-all"
-                          onClick={() => setSelectedDrafts(selectedCount === allPendingDraftIds.length ? new Set() : new Set(allPendingDraftIds))}>
-                          {selectedCount === allPendingDraftIds.length ? '取消全选' : '全选'}
+                          disabled={suggestedDraftIds.length === 0}
+                          onClick={() => setSelectedDrafts(selectedCount === suggestedDraftIds.length ? new Set() : new Set(suggestedDraftIds))}>
+                          {selectedCount === suggestedDraftIds.length && suggestedDraftIds.length > 0 ? '取消建议' : '选择建议入库'}
                         </button>
                       </div>
                     </div>
@@ -658,12 +702,18 @@ export function InboxView({ initialInboxId = null, onOpenKnowledge }: InboxViewP
                             <div>
                               <div className="draft-heading-row">
                                 <strong>{draft.coreClaim}</strong>
-                                <span className={`draft-classification ${draft.classification}`}>{CLASSIFICATION_LABELS[draft.classification]}</span>
+                                <span className={`draft-classification ${draft.classification}`}>{classificationLabel(draft)}</span>
                               </div>
                               {draft.relatedCoreClaim && draft.classification !== 'new' && (
                                 <div className="draft-related">
                                   <span>{draft.classification === 'duplicate' ? '将合并到' : draft.classification === 'conflict' ? '与此冲突' : '补充现有知识'}</span>
                                   <strong>{draft.relatedCoreClaim}</strong>
+                                </div>
+                              )}
+                              {isSameInboxDuplicate(draft) && (
+                                <div className="draft-related">
+                                  <span>与本批另一条草稿重复</span>
+                                  <strong>默认不入库；如需独立保留，请先修正为新知识</strong>
                                 </div>
                               )}
                               {draft.rationale && <p className="draft-rationale">{draft.rationale}{draft.confidence != null ? ` · ${Math.round(draft.confidence * 100)}%` : ''}</p>}
@@ -682,7 +732,7 @@ export function InboxView({ initialInboxId = null, onOpenKnowledge }: InboxViewP
                       <button type="button" className="secondary" disabled={Boolean(action)} onClick={() => void ignore()}>
                         <X size={13} strokeWidth={1.9} />忽略来源
                       </button>
-                      <button type="button" className="primary" disabled={selectedCount === 0 || Boolean(action)} onClick={() => void acceptSelected()}>
+                      <button type="button" className="primary" disabled={selectedCount === 0 || hasBlockedSameInboxDuplicate || Boolean(action)} onClick={() => void acceptSelected()} title={hasBlockedSameInboxDuplicate ? '同批重复草稿需要先修正为新知识才能接收' : undefined}>
                         {action === 'accept' ? <LoaderCircle size={13} className="spin" /> : <FileCheck2 size={13} strokeWidth={1.9} />}
                         接收选中 {selectedCount} 条
                       </button>

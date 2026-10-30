@@ -275,11 +275,35 @@ pub fn research_gap_set_status(
     let (record, plan_id) = state.with_connection(|connection| {
         let plan_id = gap_plan_id(connection, &gap_id)?;
         let now = now_ms();
-        let changed = connection
-            .execute(
-                "UPDATE research_gaps SET status = ?2, updated_at = ?3 WHERE id = ?1",
-                params![gap_id, status, now],
-            )
+        let covered_knowledge_ids = if status == "covered" {
+            let ids = accepted_gap_knowledge_ids(connection, &gap_id)?;
+            if ids.is_empty() {
+                return Err("research gap can only be covered after accepted knowledge is linked".into());
+            }
+            Some(ids)
+        } else {
+            None
+        };
+        let changed = if let Some(ids) = covered_knowledge_ids.as_ref() {
+            connection
+                .execute(
+                    "UPDATE research_gaps
+                     SET status = ?2, related_knowledge_ids_json = ?3, updated_at = ?4
+                     WHERE id = ?1",
+                    params![
+                        gap_id,
+                        status,
+                        serde_json::to_string(ids).map_err(|error| format!("failed to serialize covered research knowledge ids: {error}"))?,
+                        now,
+                    ],
+                )
+        } else {
+            connection
+                .execute(
+                    "UPDATE research_gaps SET status = ?2, updated_at = ?3 WHERE id = ?1",
+                    params![gap_id, status, now],
+                )
+        }
             .map_err(|error| format!("failed to update research gap status: {error}"))?;
         if changed != 1 {
             return Err("research gap not found".into());
@@ -290,7 +314,7 @@ pub fn research_gap_set_status(
             "research.gap.status",
             "research_gap",
             Some(&gap_id),
-            Some(json!({ "status": status })),
+            Some(json!({ "status": status, "coveredKnowledgeIds": covered_knowledge_ids })),
         )?;
         Ok((load_gap(connection, &gap_id)?, plan_id))
     })?;
@@ -773,6 +797,58 @@ fn load_gap_sources(
     Ok(rows)
 }
 
+fn accepted_gap_knowledge_ids(
+    connection: &rusqlite::Connection,
+    gap_id: &str,
+) -> Result<Vec<String>, String> {
+    let existing = load_gap(connection, gap_id)?;
+    let mut ids = Vec::new();
+    let mut seen = HashSet::new();
+    for knowledge_id in existing.related_knowledge_ids {
+        let active = connection
+            .query_row(
+                "SELECT 1 FROM knowledge_units
+                 WHERE id = ?1
+                   AND deleted_at IS NULL
+                   AND archived_at IS NULL
+                   AND status <> 'captured'
+                   AND trim(core_claim) <> ''",
+                [&knowledge_id],
+                |_| Ok(()),
+            )
+            .optional()
+            .map_err(|error| format!("failed to validate research gap knowledge: {error}"))?
+            .is_some();
+        if active && seen.insert(knowledge_id.clone()) {
+            ids.push(knowledge_id);
+        }
+    }
+
+    let mut statement = connection
+        .prepare(
+            "SELECT DISTINCT k.id
+             FROM research_gap_sources rgs
+             JOIN knowledge_units k ON k.source_id = rgs.source_id
+             WHERE rgs.gap_id = ?1
+               AND k.deleted_at IS NULL
+               AND k.archived_at IS NULL
+               AND k.status <> 'captured'
+               AND trim(k.core_claim) <> ''
+             ORDER BY k.created_at ASC, k.rowid ASC",
+        )
+        .map_err(|error| format!("failed to prepare covered research knowledge query: {error}"))?;
+    let rows = statement
+        .query_map([gap_id], |row| row.get::<_, String>(0))
+        .map_err(|error| format!("failed to query covered research knowledge: {error}"))?;
+    for row in rows {
+        let knowledge_id = row.map_err(|error| format!("failed to read covered research knowledge: {error}"))?;
+        if seen.insert(knowledge_id.clone()) {
+            ids.push(knowledge_id);
+        }
+    }
+    Ok(ids)
+}
+
 fn gap_plan_id(connection: &rusqlite::Connection, gap_id: &str) -> Result<String, String> {
     connection
         .query_row("SELECT plan_id FROM research_gaps WHERE id = ?1", [gap_id], |row| row.get(0))
@@ -863,6 +939,31 @@ mod tests {
         invalid.gaps[0].related_knowledge_ids = vec!["missing".into()];
         let normalized = validate_research_output(invalid, &input).unwrap();
         assert!(normalized.gaps[0].related_knowledge_ids.is_empty());
+    }
+
+    #[test]
+    fn covered_gap_requires_formal_knowledge_and_collects_it_from_linked_sources() {
+        let mut connection = test_database();
+        let mut plan_output = output();
+        plan_output.gaps[0].related_knowledge_ids.clear();
+        let plan = persist_plan(&mut connection, "Agent memory", &["k1".into()], plan_output).unwrap();
+        let gap_id = plan.gaps[0].id.clone();
+
+        assert!(accepted_gap_knowledge_ids(&connection, &gap_id).unwrap().is_empty());
+        connection
+            .execute(
+                "INSERT INTO research_gap_sources(gap_id, source_id, created_at) VALUES (?1, 's2', 100)",
+                [&gap_id],
+            )
+            .unwrap();
+        assert!(accepted_gap_knowledge_ids(&connection, &gap_id).unwrap().is_empty());
+        connection
+            .execute(
+                "INSERT INTO research_gap_sources(gap_id, source_id, created_at) VALUES (?1, 's1', 101)",
+                [&gap_id],
+            )
+            .unwrap();
+        assert_eq!(accepted_gap_knowledge_ids(&connection, &gap_id).unwrap(), vec!["k1"]);
     }
 
     #[test]

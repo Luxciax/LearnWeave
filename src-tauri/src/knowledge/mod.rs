@@ -119,6 +119,15 @@ pub fn knowledge_capture(
     let now = now_ms();
 
     state.with_connection(|connection| {
+        if should_upgrade_to_zhihu(&input) {
+            if let Some(existing) = load_capture_by_zhihu_url(connection, &input)? {
+                return Ok(CaptureKnowledgeResult {
+                    duplicate: true,
+                    ..existing
+                });
+            }
+        }
+
         if let Some(existing) = load_capture_by_hash(connection, &content_hash)? {
             return Ok(CaptureKnowledgeResult {
                 duplicate: true,
@@ -276,6 +285,7 @@ fn normalized_platform(platform: &str) -> &'static str {
         "web" => "web",
         "pdf" => "pdf",
         "desktop" => "desktop",
+        "manual" => "manual",
         _ => "unknown",
     }
 }
@@ -289,14 +299,67 @@ fn normalized_optional(value: &Option<String>) -> Option<String> {
 }
 
 fn capture_hash(input: &SourceCaptureInput) -> Result<String, String> {
-    let canonical = serde_json::to_vec(input)
-        .map_err(|error| format!("failed to serialize source for deduplication: {error}"))?;
+    let canonical = if normalized_platform(&input.platform) == "zhihu" {
+        if let Some(url) = canonical_source_url(input) {
+            format!(
+                "zhihu:url:{url}:text:{}",
+                normalized_source_text(&input.selected_text)
+            )
+            .into_bytes()
+        } else {
+            format!("zhihu:text:{}", normalized_source_text(&input.selected_text)).into_bytes()
+        }
+    } else {
+        serde_json::to_vec(input)
+            .map_err(|error| format!("failed to serialize source for deduplication: {error}"))?
+    };
     let digest = Sha256::digest(canonical);
     Ok(format!("{digest:x}"))
 }
 
+fn canonical_source_url(input: &SourceCaptureInput) -> Option<String> {
+    normalized_optional(&input.url).map(|url| {
+        let without_fragment = url.split('#').next().unwrap_or(url.as_str());
+        let without_query = without_fragment.split('?').next().unwrap_or(without_fragment);
+        without_query.trim_end_matches('/').to_string()
+    })
+}
+
+fn normalized_source_text(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 fn should_upgrade_to_zhihu(input: &SourceCaptureInput) -> bool {
-    normalized_platform(&input.platform) == "zhihu" && normalized_optional(&input.url).is_some()
+    normalized_platform(&input.platform) == "zhihu" && canonical_source_url(input).is_some()
+}
+
+fn load_capture_by_zhihu_url(
+    connection: &rusqlite::Connection,
+    input: &SourceCaptureInput,
+) -> Result<Option<CaptureKnowledgeResult>, String> {
+    let Some(canonical_url) = canonical_source_url(input) else {
+        return Ok(None);
+    };
+    let query = capture_query(
+        "s.platform = 'zhihu' AND (
+            rtrim(s.url, '/') = ?1 OR
+            s.url LIKE ?2 OR
+            s.url LIKE ?3
+        ) AND s.selected_text = ?4",
+    );
+    connection
+        .query_row(
+            &query,
+            params![
+                canonical_url,
+                format!("{canonical_url}?%"),
+                format!("{canonical_url}#%"),
+                input.selected_text,
+            ],
+            map_capture_row,
+        )
+        .optional()
+        .map_err(|error| format!("failed to query existing Zhihu source URL: {error}"))
 }
 
 fn load_zhihu_upgrade_candidate(
@@ -456,6 +519,30 @@ mod tests {
         assert_eq!(normalized_platform("zhihu"), "zhihu");
         assert_eq!(normalized_platform("DESKTOP"), "desktop");
         assert_eq!(normalized_platform("something-else"), "unknown");
+    }
+
+    #[test]
+    fn zhihu_identity_ignores_metadata_but_preserves_selection() {
+        let first = SourceCaptureInput {
+            platform: "zhihu".into(),
+            selected_text: "一段正文".into(),
+            url: Some("https://zhuanlan.zhihu.com/p/269199110?utm_source=test".into()),
+            title: Some("标题".into()),
+            author: None,
+            context_before: Some("上下文 A".into()),
+            context_after: None,
+            application: None,
+            window_title: None,
+        };
+        let mut second = first.clone();
+        second.author = Some("JavaGuide".into());
+        second.context_before = Some("上下文 B".into());
+        second.url = Some("https://zhuanlan.zhihu.com/p/269199110#section".into());
+        assert_eq!(capture_hash(&first).unwrap(), capture_hash(&second).unwrap());
+        assert_eq!(canonical_source_url(&first).as_deref(), Some("https://zhuanlan.zhihu.com/p/269199110"));
+
+        second.selected_text = "另一段正文".into();
+        assert_ne!(capture_hash(&first).unwrap(), capture_hash(&second).unwrap());
     }
 
     #[test]

@@ -1,6 +1,6 @@
 # Versioning and Release Policy
 
-SelectionTranslator uses [Semantic Versioning](https://semver.org/) starting with the first public stable release, `1.0.0`.
+ZhiForge uses [Semantic Versioning](https://semver.org/) starting with the first public stable release, `1.0.0`.
 
 ## Version format
 
@@ -36,16 +36,16 @@ Before every release, these values must match exactly:
 
 - `package.json`
 - `src-tauri/Cargo.toml`
-- `src-tauri/Cargo.lock` (`selection-translator` package entry)
+- `src-tauri/Cargo.lock` (`zhiforge` package entry)
 - `src-tauri/tauri.conf.json`
 
 ## Release artifacts
 
 A stable Windows release should include:
 
-- `SelectionTranslator_X.Y.Z_x64-setup.exe`
-- `SelectionTranslator_X.Y.Z_x64_en-US.msi`
-- `SelectionTranslator_X.Y.Z_x64_Portable.exe`
+- `ZhiForge_X.Y.Z_x64-setup.exe` (NSIS)
+- `ZhiForge_X.Y.Z_x64_en-US.msi` (MSI, when produced by the runner)
+- `ZhiForge-vX.Y.Z-Windows-x64-Portable.exe`
 - SHA-256 checksums
 - Release notes / changelog summary
 

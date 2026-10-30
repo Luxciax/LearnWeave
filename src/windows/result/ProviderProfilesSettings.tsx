@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { Braces, Check, ChevronDown, Eye, EyeOff, Plus, RefreshCw, Save, SlidersHorizontal, Trash2 } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { LANGUAGE_OPTIONS, toProviderConfig } from '../../ai/config'
 import type { AppConfig, ProviderAdapterId, ProviderProfile } from '../../domain/settings'
 import { getModelCapabilities } from '../../services/capability-service'
@@ -76,6 +76,7 @@ export function ProviderProfilesSettings({
   const [showKey, setShowKey] = useState(false)
   const [models, setModels] = useState<string[]>([])
   const [modelMenuOpen, setModelMenuOpen] = useState(false)
+  const [modelFilter, setModelFilter] = useState('')
   const [modelError, setModelError] = useState<string | null>(null)
   const [loadingModels, setLoadingModels] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -84,9 +85,15 @@ export function ProviderProfilesSettings({
   const [headersOpen, setHeadersOpen] = useState(false)
   const [headersText, setHeadersText] = useState('')
   const [capabilities, setCapabilities] = useState<ModelCapabilities | null>(null)
+  const modelLoadRevisionRef = useRef(0)
+  const providerSelectionRevisionRef = useRef(0)
 
 
   const selectProvider = useCallback(async (profile: ProviderProfile) => {
+    const selectionRevision = providerSelectionRevisionRef.current + 1
+    providerSelectionRevisionRef.current = selectionRevision
+    modelLoadRevisionRef.current += 1
+    setLoadingModels(false)
     setSelectedId(profile.id)
     setDraft({
       ...profile,
@@ -95,11 +102,15 @@ export function ProviderProfilesSettings({
       extra: { ...(profile.extra || {}) }
     })
     setHeadersText(headersToText(profile.headers || {}))
+    setApiKey('')
     setModels([])
+    setModelMenuOpen(false)
+    setModelFilter('')
     setModelError(null)
     setSaved(false)
     const credentialId = profile.credentialId || profile.id
     const key = await loadProviderApiKey(credentialId).catch(() => '')
+    if (providerSelectionRevisionRef.current !== selectionRevision) return
     setApiKey(key)
   }, [])
 
@@ -112,10 +123,16 @@ export function ProviderProfilesSettings({
       void selectProvider(active)
     } else {
       const profile = createProviderProfile()
+      providerSelectionRevisionRef.current += 1
+      modelLoadRevisionRef.current += 1
+      setLoadingModels(false)
       setSelectedId(profile.id)
       setDraft(profile)
       setHeadersText('')
       setApiKey('')
+      setModels([])
+      setModelMenuOpen(false)
+      setModelFilter('')
     }
   }, [config, selectProvider])
 
@@ -138,17 +155,24 @@ export function ProviderProfilesSettings({
   }, [draft?.adapterId, draft?.defaultModel])
 
   const addProvider = () => {
+    providerSelectionRevisionRef.current += 1
+    modelLoadRevisionRef.current += 1
+    setLoadingModels(false)
     const profile = createProviderProfile()
     setSelectedId(profile.id)
     setDraft(profile)
     setHeadersText('')
     setApiKey('')
     setModels([])
+    setModelMenuOpen(false)
+    setModelFilter('')
     setModelError(null)
     setSaved(false)
   }
 
   const updateAdapter = (adapterId: ProviderAdapterId) => {
+    modelLoadRevisionRef.current += 1
+    setLoadingModels(false)
     setDraft((current) => current ? {
       ...current,
       adapterId,
@@ -156,9 +180,10 @@ export function ProviderProfilesSettings({
       headers: {},
       defaultModel: ''
     } : current)
-    setApiKey('')
     setHeadersText('')
     setModels([])
+    setModelMenuOpen(false)
+    setModelFilter('')
     setModelError(null)
     setSaved(false)
   }
@@ -169,6 +194,8 @@ export function ProviderProfilesSettings({
       setModelError('先填写 API 地址')
       return
     }
+    const requestRevision = modelLoadRevisionRef.current + 1
+    modelLoadRevisionRef.current = requestRevision
     setLoadingModels(true)
     setModelError(null)
     try {
@@ -178,16 +205,18 @@ export function ProviderProfilesSettings({
         ui: { ...config.ui, targetLanguage, alternateLanguage }
       }, apiKey)
       const next = await invoke<string[]>('list_models', { provider: toProviderConfig(runtime) })
+      if (modelLoadRevisionRef.current !== requestRevision) return
       setModels(next)
+      setModelFilter('')
       setModelMenuOpen(next.length > 0)
       if (!draft.defaultModel && next.length > 0) {
         setDraft((current) => current ? { ...current, defaultModel: next[0] } : current)
       }
       if (next.length === 0) setModelError('没有返回可用模型')
     } catch (error) {
-      setModelError(String(error))
+      if (modelLoadRevisionRef.current === requestRevision) setModelError(String(error))
     } finally {
-      setLoadingModels(false)
+      if (modelLoadRevisionRef.current === requestRevision) setLoadingModels(false)
     }
   }
 
@@ -290,10 +319,9 @@ export function ProviderProfilesSettings({
     }
   }
 
-  const modelQuery = draft?.defaultModel?.trim().toLowerCase() || ''
-  const selectedModelIsFetched = Boolean(modelQuery && models.some((model) => model.toLowerCase() === modelQuery))
-  const visibleModels = modelQuery && !selectedModelIsFetched
-    ? models.filter((model) => model.toLowerCase().includes(modelQuery))
+  const normalizedModelFilter = modelFilter.trim().toLowerCase()
+  const visibleModels = normalizedModelFilter
+    ? models.filter((model) => model.toLowerCase().includes(normalizedModelFilter))
     : models
 
   return (
@@ -341,7 +369,15 @@ export function ProviderProfilesSettings({
 
               <label className="wide">
                 <span>API 地址</span>
-                <input value={draft.apiBase} spellCheck={false} onChange={(event) => setDraft({ ...draft, apiBase: event.target.value })} />
+                <input value={draft.apiBase} spellCheck={false} onChange={(event) => {
+                  modelLoadRevisionRef.current += 1
+                  setLoadingModels(false)
+                  setModels([])
+                  setModelMenuOpen(false)
+                  setModelFilter('')
+                  setModelError(null)
+                  setDraft({ ...draft, apiBase: event.target.value })
+                }} />
               </label>
 
               <label className="wide">
@@ -353,7 +389,16 @@ export function ProviderProfilesSettings({
                     autoComplete="off"
                     spellCheck={false}
                     placeholder="本地服务可留空"
-                    onChange={(event) => setApiKey(event.target.value)}
+                    onChange={(event) => {
+                      providerSelectionRevisionRef.current += 1
+                      modelLoadRevisionRef.current += 1
+                      setLoadingModels(false)
+                      setModels([])
+                      setModelMenuOpen(false)
+                      setModelFilter('')
+                      setModelError(null)
+                      setApiKey(event.target.value)
+                    }}
                   />
                   <button type="button" aria-label={showKey ? '隐藏 Key' : '显示 Key'} title={showKey ? '隐藏 Key' : '显示 Key'} onClick={() => setShowKey((current) => !current)}>
                     {showKey ? <EyeOff size={14} strokeWidth={1.8} /> : <Eye size={14} strokeWidth={1.8} />}
@@ -373,10 +418,15 @@ export function ProviderProfilesSettings({
                       spellCheck={false}
                       placeholder="输入模型名或拉取"
                       onFocus={() => {
-                        if (models.length > 0) setModelMenuOpen(true)
+                        if (models.length > 0) {
+                          setModelFilter('')
+                          setModelMenuOpen(true)
+                        }
                       }}
                       onChange={(event) => {
-                        setDraft({ ...draft, defaultModel: event.target.value })
+                        const nextModel = event.target.value
+                        setDraft({ ...draft, defaultModel: nextModel })
+                        setModelFilter(nextModel)
                         if (models.length > 0) setModelMenuOpen(true)
                       }}
                     />
@@ -386,7 +436,13 @@ export function ProviderProfilesSettings({
                       title={models.length > 0 ? `查看全部 ${models.length} 个模型` : '先拉取模型'}
                       aria-expanded={modelMenuOpen}
                       disabled={models.length === 0}
-                      onClick={() => setModelMenuOpen((current) => !current)}>
+                      onClick={() => {
+                        setModelMenuOpen((current) => {
+                          const nextOpen = !current
+                          if (nextOpen) setModelFilter('')
+                          return nextOpen
+                        })
+                      }}>
                       <ChevronDown size={14} strokeWidth={1.8} className={modelMenuOpen ? 'expanded' : undefined} />
                     </button>
                     <button type="button" aria-label="拉取模型" title="拉取模型" disabled={loadingModels} onClick={() => void loadModels()}>
@@ -409,6 +465,7 @@ export function ProviderProfilesSettings({
                             key={model}
                             onClick={() => {
                               setDraft({ ...draft, defaultModel: model })
+                              setModelFilter('')
                               setModelMenuOpen(false)
                             }}>
                             {model}
@@ -541,7 +598,15 @@ export function ProviderProfilesSettings({
                   value={headersText}
                   spellCheck={false}
                   placeholder={'HTTP-Referer: https://example.com\nX-Title: ZhiForge'}
-                  onChange={(event) => setHeadersText(event.target.value)}
+                  onChange={(event) => {
+                    modelLoadRevisionRef.current += 1
+                    setLoadingModels(false)
+                    setModels([])
+                    setModelMenuOpen(false)
+                    setModelFilter('')
+                    setModelError(null)
+                    setHeadersText(event.target.value)
+                  }}
                 />
                 <small>每行一个 Name: Value。Authorization / API Key 等认证头由程序管理，不允许在这里覆盖。</small>
               </div>

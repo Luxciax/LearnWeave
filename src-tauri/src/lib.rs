@@ -1,5 +1,6 @@
 mod ai;
 mod browser_bridge;
+mod connectors;
 mod database;
 mod diagnostics;
 pub mod domain;
@@ -48,6 +49,7 @@ pub fn run() {
             database::safety::knowledge_export,
             database::safety::audit_log_list,
             browser_bridge::open_source_url,
+            connectors::web_url::web_url_fetch,
             knowledge::knowledge_capture,
             knowledge::knowledge_list,
             knowledge::knowledge_get,

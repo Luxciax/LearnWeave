@@ -99,7 +99,7 @@ export function Toolbar() {
       } catch (error) {
         await toolbarWindow.show().catch(() => undefined)
         await toolbarWindow.setFocus().catch(() => undefined)
-        console.error('Failed to open Zhihu search', error)
+        console.error('Failed to open search', error)
       }
       return
     }

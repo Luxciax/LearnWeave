@@ -1,6 +1,8 @@
-# SelectionTranslator Documentation
+# ZhiForge Documentation
 
-## v0.2.0 阅读顺序
+> `v0.2-*` 文档来自 ZhiForge 前身 SelectionTranslator，只保留作历史架构参考，不代表当前 ZhiForge v1.4.0 的产品流程、名称、路径或发布方式。当前行为以根目录 `README.md`、`DEMO.md`、`docs/HACKATHON_DEMO.md` 和现有源码为准。
+
+## Legacy v0.2.0 阅读顺序
 
 ### 1. `v0.2-product-spec.md`
 

@@ -49,6 +49,27 @@ function taskTime(timestamp: number) {
   }).format(new Date(timestamp))
 }
 
+function friendlyTaskError(task: AiTaskRecord) {
+  const error = task.error?.trim()
+  if (!error) return null
+  const normalized = error.toLowerCase()
+  if (normalized.includes('provider') || normalized.includes('api key') || normalized.includes('route') || normalized.includes('model')) {
+    return 'AI 模型暂不可用，请检查模型配置后重试。'
+  }
+  if (normalized.includes('json') || normalized.includes('schema') || normalized.includes('structured output')) {
+    return '模型返回格式不完整，本次任务没有写入为成功结果，可以直接重试。'
+  }
+  if (normalized.includes('evidence') || normalized.includes('source quote')) {
+    return task.taskType === 'question_generation'
+      ? '题目证据无法与原文对应，本次出题已停止，可以重试。'
+      : '提炼结果的证据无法与原文对应，本次处理已停止，可以重试。'
+  }
+  if (normalized.includes('duplicate/conflict analysis')) {
+    return '知识草稿已生成，但重复 / 冲突检查没有完成，请重试。'
+  }
+  return error
+}
+
 export function TaskCenterView({ onOpenKnowledge, onOpenInbox, onOpenSuggestions }: TaskCenterViewProps) {
   const [tasks, setTasks] = useState<AiTaskRecord[]>([])
   const [loading, setLoading] = useState(true)
@@ -191,7 +212,7 @@ export function TaskCenterView({ onOpenKnowledge, onOpenInbox, onOpenSuggestions
                     <small>{taskTime(task.updatedAt)}</small>
                   </div>
                   <strong>{task.title}</strong>
-                  {task.error && <p>{task.error}</p>}
+                  {task.error && <p title={task.error}>{friendlyTaskError(task)}</p>}
                 </div>
                 <div className="task-actions">
                   {task.retryable && (

@@ -48,6 +48,7 @@ const PLATFORM_LABELS: Record<SourcePlatform, string> = {
   web: '网页',
   pdf: 'PDF',
   desktop: '桌面',
+  manual: '手动',
   unknown: '未知来源'
 }
 
@@ -94,6 +95,7 @@ export function KnowledgeLibraryView({ initialTopicId = null, onOpenKnowledge }:
   const [semanticSearching, setSemanticSearching] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const hasActiveFilters = Boolean(query || status || qualityStatus || topicId || tagId || includeArchived)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -166,6 +168,17 @@ export function KnowledgeLibraryView({ initialTopicId = null, onOpenKnowledge }:
       setSemanticResult(null)
       setQuery(queryDraft.trim())
     }
+  }
+
+  const resetFilters = () => {
+    setSemanticResult(null)
+    setQueryDraft('')
+    setQuery('')
+    setStatus('')
+    setQualityStatus('')
+    setTopicId('')
+    setTagId('')
+    setIncludeArchived(false)
   }
 
   const restore = async (knowledgeUnitId: string) => {
@@ -345,7 +358,14 @@ export function KnowledgeLibraryView({ initialTopicId = null, onOpenKnowledge }:
           </div>
         )
       ) : items.length === 0 ? (
-        <div className="workspace-empty">没有符合当前条件的知识。</div>
+        hasActiveFilters ? (
+          <div className="workspace-empty library-filter-empty">
+            <span>知识库里有数据也可能被当前筛选隐藏；这里仅表示没有符合当前条件的知识。</span>
+            <button type="button" onClick={resetFilters}>清除筛选并查看全部</button>
+          </div>
+        ) : (
+          <div className="workspace-empty">知识库还是空的。先从知乎搜索或收件箱接收一条知识。</div>
+        )
       ) : (
         <div className="library-list">
           {items.map((item) => (

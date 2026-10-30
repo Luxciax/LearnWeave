@@ -29,7 +29,8 @@ import type {
   ResearchPlanSummary,
   TagRecord,
   TopicRecord,
-  TrashKnowledgeItem
+  TrashKnowledgeItem,
+  WebUrlFetchResult
 } from '../types'
 
 export interface KnowledgeLibraryFilters {
@@ -247,6 +248,10 @@ export interface KnowledgeHealthReport {
 
 export function captureKnowledge(input: SourceCaptureInput) {
   return invoke<KnowledgeCaptureResult>('knowledge_capture', { input })
+}
+
+export function fetchWebUrl(url: string) {
+  return invoke<WebUrlFetchResult>('web_url_fetch', { url })
 }
 
 export function listKnowledge(limit = 20) {

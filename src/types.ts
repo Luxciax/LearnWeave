@@ -95,7 +95,7 @@ export interface AiErrorEvent {
   partial: boolean
 }
 
-export type SourcePlatform = 'zhihu' | 'web' | 'pdf' | 'desktop' | 'unknown'
+export type SourcePlatform = 'zhihu' | 'web' | 'pdf' | 'desktop' | 'manual' | 'unknown'
 
 export interface SourceCaptureInput {
   platform: SourcePlatform
@@ -107,6 +107,12 @@ export interface SourceCaptureInput {
   contextAfter?: string
   application?: string
   windowTitle?: string
+}
+
+export interface WebUrlFetchResult {
+  url: string
+  title?: string
+  text: string
 }
 
 export interface SourceRecord extends SourceCaptureInput {

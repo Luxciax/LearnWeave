@@ -11,7 +11,7 @@ export interface ToolbarAction {
 
 const ZHIHU_SEARCH_ACTION: ToolbarAction = {
   id: 'zhihu-search',
-  label: '搜知乎',
+  label: '搜索',
   primary: true,
   order: -1000,
   outputMode: 'markdown'

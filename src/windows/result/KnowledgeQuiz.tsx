@@ -53,6 +53,7 @@ interface KnowledgeQuizProps {
   onLocateEvidence: (evidence: EvidenceRecord) => void
   onOpenSource?: () => void
   onJudged: (masteryScore: number) => void
+  onFocusModeChange?: (focused: boolean) => void
   onContinueReview?: () => void
   preferContinueReview?: boolean
 }
@@ -67,6 +68,7 @@ export function KnowledgeQuiz({
   onLocateEvidence,
   onOpenSource,
   onJudged,
+  onFocusModeChange,
   onContinueReview,
   preferContinueReview = false
 }: KnowledgeQuizProps) {
@@ -134,6 +136,11 @@ export function KnowledgeQuiz({
     return evidence.filter((item) => ids.has(item.id))
   }, [activeAttempt, evidence])
 
+  useEffect(() => {
+    if (loading) return
+    onFocusModeChange?.(!activeAttempt?.result)
+  }, [activeAttempt?.result, activeQuestionId, loading, onFocusModeChange])
+
   if (!activeQuestion) return null
 
   const judgeAttempt = async (attempt: KnowledgeAttemptRecord) => {
@@ -144,6 +151,7 @@ export function KnowledgeQuiz({
       setAttempts((current) => current.map((item) => item.id === judged.attempt.id ? judged.attempt : item))
       setMasteryScore(judged.masteryScore)
       setAnswer('')
+      onFocusModeChange?.(false)
       onJudged(judged.masteryScore)
       window.setTimeout(() => feedbackRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 0)
     } catch (judgeError) {
@@ -233,7 +241,10 @@ export function KnowledgeQuiz({
             rows={4}
             maxLength={20000}
             placeholder="用自己的话写下理解…"
-            onChange={(event) => setAnswer(event.target.value)}
+            onChange={(event) => {
+              if (activeAttempt?.result) onFocusModeChange?.(true)
+              setAnswer(event.target.value)
+            }}
             onKeyDown={(event) => {
               if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && answer.trim() && !judging) {
                 event.preventDefault()

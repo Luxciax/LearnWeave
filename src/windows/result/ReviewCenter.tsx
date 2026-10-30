@@ -26,6 +26,7 @@ const PLATFORM_LABELS: Record<SourcePlatform, string> = {
   web: '网页',
   pdf: 'PDF',
   desktop: '桌面',
+  manual: '手动',
   unknown: '未知来源'
 }
 
