@@ -40,15 +40,20 @@ const STATUS_LABELS: Record<KnowledgeStatus, string> = {
   mastered: '已掌握'
 }
 
-const PLATFORM_OPTIONS: Array<{ value: '' | SourcePlatform; label: string }> = [
-  { value: '', label: '全部来源' },
-  { value: 'zhihu', label: '知乎' },
+const SOURCE_KIND_OPTIONS: Array<{ value: '' | SourceKind; label: string }> = [
+  { value: '', label: '全部类型' },
   { value: 'web', label: '网页' },
-  { value: 'pdf', label: 'PDF' },
   { value: 'desktop', label: '桌面' },
+  { value: 'document', label: '文档' },
   { value: 'manual', label: '手动' },
   { value: 'unknown', label: '未知来源' }
 ]
+
+const CONNECTOR_OPTIONS = [
+  { value: '', label: '全部 Connector' },
+  { value: 'zhihu', label: '知乎' },
+  { value: 'web-url', label: '网页 URL' }
+] as const
 
 function sourceLabel(item: Pick<SourceLibraryItem, 'sourceKind' | 'connectorId' | 'platform'> | SourceRecord) {
   return item.connectorId ? (CONNECTOR_LABELS[item.connectorId] || item.connectorId) : (SOURCE_KIND_LABELS[item.sourceKind] || PLATFORM_LABELS[item.platform])
@@ -75,7 +80,8 @@ export function SourceLibraryView({ initialSourceId = null, onSourceChange, onOp
   const [detail, setDetail] = useState<SourceDetailRecord | null>(null)
   const [queryDraft, setQueryDraft] = useState('')
   const [query, setQuery] = useState('')
-  const [platform, setPlatform] = useState<'' | SourcePlatform>('')
+  const [sourceKind, setSourceKind] = useState<'' | SourceKind>('')
+  const [connectorId, setConnectorId] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -98,14 +104,19 @@ export function SourceLibraryView({ initialSourceId = null, onSourceChange, onOp
   const refreshList = useCallback(async () => {
     setLoading(true)
     try {
-      setItems(await listSources(query || undefined, platform || undefined, 200))
+      setItems(await listSources({
+        query: query || undefined,
+        sourceKind: sourceKind || undefined,
+        connectorId: connectorId || undefined,
+        limit: 200
+      }))
       setError(null)
     } catch (loadError) {
       setError(String(loadError))
     } finally {
       setLoading(false)
     }
-  }, [platform, query])
+  }, [connectorId, query, sourceKind])
 
   const loadDetail = useCallback(async (sourceId: string) => {
     setLoading(true)
@@ -221,9 +232,15 @@ export function SourceLibraryView({ initialSourceId = null, onSourceChange, onOp
 
       <div className="source-filter-row">
         <label>
-          <span>平台</span>
-          <select value={platform} onChange={(event) => setPlatform(event.target.value as '' | SourcePlatform)}>
-            {PLATFORM_OPTIONS.map((option) => <option key={option.value || 'all'} value={option.value}>{option.label}</option>)}
+          <span>类型</span>
+          <select value={sourceKind} onChange={(event) => setSourceKind(event.target.value as '' | SourceKind)}>
+            {SOURCE_KIND_OPTIONS.map((option) => <option key={option.value || 'all'} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <label>
+          <span>Connector</span>
+          <select value={connectorId} onChange={(event) => setConnectorId(event.target.value)}>
+            {CONNECTOR_OPTIONS.map((option) => <option key={option.value || 'all'} value={option.value}>{option.label}</option>)}
           </select>
         </label>
       </div>
