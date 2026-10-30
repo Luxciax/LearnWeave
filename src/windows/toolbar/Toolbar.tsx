@@ -42,7 +42,7 @@ export function Toolbar() {
   const [captureStatus, setCaptureStatus] = useState<CaptureStatus>(null)
   const [capturePlatform, setCapturePlatform] = useState<SourcePlatform | null>(null)
   const [showMore, setShowMore] = useState(false)
-  const coreActionIds = ['zhihu-search', 'translate', 'internalize', 'explain']
+  const coreActionIds = ['discover', 'translate', 'internalize', 'explain']
   const extraActions = actions.filter((action) => !coreActionIds.includes(action.id))
   const visibleActions = showMore ? actions : actions.filter((action) => coreActionIds.includes(action.id))
 
@@ -91,7 +91,7 @@ export function Toolbar() {
   const runAction = async (action: ToolbarAction) => {
     if (!selection) return
 
-    if (action.id === 'zhihu-search') {
+    if (action.id === 'discover' || action.id === 'zhihu-search') {
       const toolbarWindow = getCurrentWindow()
       try {
         await invoke('zhihu_open_search', { query: selection.text })

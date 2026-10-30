@@ -1,29 +1,29 @@
 (() => {
   'use strict'
 
-  if (typeof importScripts === 'function' && !globalThis.ZhiForgeDesktopBridge) {
+  if (typeof importScripts === 'function' && !globalThis.LearnWeaveDesktopBridge) {
     importScripts('desktop-bridge.js')
   }
 
-  function isZhihuSender(sender) {
+  function isWebSender(sender) {
     try {
       const url = new URL(sender?.url || '')
-      return url.protocol === 'https:' && (url.hostname === 'zhihu.com' || url.hostname.endsWith('.zhihu.com'))
+      return url.protocol === 'https:' || url.protocol === 'http:'
     } catch {
       return false
     }
   }
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message?.type !== 'zhiforge:zhihu-selection' || !isZhihuSender(sender)) {
+    if (!['learnweave:web-selection', 'zhiforge:zhihu-selection'].includes(message?.type) || !isWebSender(sender)) {
       return false
     }
 
-    globalThis.ZhiForgeDesktopBridge
+    globalThis.LearnWeaveDesktopBridge
       .sendCapture(message.payload)
       .then((result) => sendResponse({ ok: true, captureId: result.captureId || null }))
       .catch((error) => {
-        console.debug('[ZhiForge] Desktop bridge unavailable:', error?.message || error)
+        console.debug('[LearnWeave] Desktop bridge unavailable:', error?.message || error)
         sendResponse({ ok: false, error: String(error?.message || error) })
       })
     return true

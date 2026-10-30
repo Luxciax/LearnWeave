@@ -46,7 +46,7 @@ const BUILTIN_ACTION_TITLES: Record<string, string> = {
 }
 
 function actionTitle(request: ActionRequest | null): string {
-  if (!request) return 'ZhiForge'
+  if (!request) return 'LearnWeave'
   return request.actionName || BUILTIN_ACTION_TITLES[request.action] || request.action
 }
 
@@ -105,6 +105,7 @@ export function ResultWindow() {
   const [executionInfo, setExecutionInfo] = useState<AiStartedEvent | null>(null)
   const [homeSearchRequest, setHomeSearchRequest] = useState<{ query: string; nonce: number } | null>(null)
   const [workspaceResetNonce, setWorkspaceResetNonce] = useState(0)
+  const [captureRequestNonce, setCaptureRequestNonce] = useState(0)
 
   const settingsRef = useRef(settings)
   const requestRef = useRef<ActionRequest | null>(null)
@@ -268,6 +269,28 @@ export function ResultWindow() {
         setRequest(null)
         setHomeSearchRequest(null)
         setWorkspaceResetNonce((value) => value + 1)
+        setPinned(false)
+        setShowOriginal(false)
+        setCopiedOriginal(false)
+        setCopiedResult(false)
+        rawContentRef.current = ''
+        setContent('')
+        setError(null)
+        setLoading(false)
+        setExecutionInfo(null)
+        setSettingsOpen(false)
+        void invoke('set_result_pinned', { pinned: false })
+      }),
+      listen('app://capture', () => {
+        if (disposed) return
+        const activeRequestId = activeRequestIdRef.current
+        activeRequestIdRef.current = null
+        if (activeRequestId) void invoke('cancel_ai', { requestId: activeRequestId }).catch(() => undefined)
+        requestRef.current = null
+        setRequest(null)
+        setHomeSearchRequest(null)
+        setWorkspaceResetNonce((value) => value + 1)
+        setCaptureRequestNonce((value) => value + 1)
         setPinned(false)
         setShowOriginal(false)
         setCopiedOriginal(false)
@@ -448,6 +471,7 @@ export function ResultWindow() {
               onOpenSettings={() => setSettingsOpen(true)}
               searchRequest={homeSearchRequest}
               onSearchRequestConsumed={() => setHomeSearchRequest(null)}
+              captureRequestNonce={captureRequestNonce}
             />
           </WorkspaceErrorBoundary>
         </main>

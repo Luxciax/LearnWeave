@@ -1,13 +1,14 @@
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    App, Listener,
+    App, Emitter, Listener,
 };
 
 use crate::{platform::{autostart, window}, selection};
 
 pub fn setup(app: &App) -> tauri::Result<()> {
-    let open = MenuItem::with_id(app, "open", "打开 ZhiForge", true, None::<&str>)?;
+    let open = MenuItem::with_id(app, "open", "打开 LearnWeave", true, None::<&str>)?;
+    let capture = MenuItem::with_id(app, "capture", "捕获内容", true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "settings", "设置", true, None::<&str>)?;
     let pause = CheckMenuItem::with_id(
         app,
@@ -26,7 +27,7 @@ pub fn setup(app: &App) -> tauri::Result<()> {
         None::<&str>,
     )?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&open, &settings, &pause, &autostart_item, &quit])?;
+    let menu = Menu::with_items(app, &[&open, &capture, &settings, &pause, &autostart_item, &quit])?;
 
     let pause_listener = pause.clone();
     app.listen("runtime://pause-changed", move |event| {
@@ -45,11 +46,12 @@ pub fn setup(app: &App) -> tauri::Result<()> {
     let autostart_menu = autostart_item.clone();
     TrayIconBuilder::new()
         .icon(app.default_window_icon().expect("application icon is missing").clone())
-        .tooltip("ZhiForge")
+        .tooltip("LearnWeave")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(move |app, event| match event.id.as_ref() {
             "open" => window::show_home(app),
+            "capture" => window::show_capture(app),
             "settings" => window::show_settings(app),
             "pause-selection" => {
                 let next = !selection::selection_paused(app);

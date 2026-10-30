@@ -1,68 +1,23 @@
 # Versioning and Release Policy
 
-ZhiForge uses [Semantic Versioning](https://semver.org/) starting with the first public stable release, `1.0.0`.
-
-## Version format
-
-Stable releases use:
-
-`MAJOR.MINOR.PATCH`
-
-Git tags use:
-
-`vMAJOR.MINOR.PATCH`
-
-Examples: `v1.0.0`, `v1.1.0`, `v1.1.1`, `v2.0.0`.
-
-## When to increment
-
-- **MAJOR**: incompatible changes to persisted configuration, public behavior, extension contracts, automation interfaces, or other compatibility guarantees.
-- **MINOR**: backward-compatible features, new providers/adapters/actions, substantial UI capabilities, or optional new configuration fields.
-- **PATCH**: backward-compatible bug fixes, compatibility fixes, small UX improvements, dependency/security fixes, and packaging corrections.
-
-## Pre-releases
-
-Use standard SemVer suffixes:
-
-- `1.1.0-alpha.1`
-- `1.1.0-beta.1`
-- `1.1.0-rc.1`
-
-Pre-release tags use the same `v` prefix, for example `v1.1.0-rc.1`.
+LearnWeave uses Semantic Versioning for public releases.
 
 ## Version synchronization
 
-Before every release, these values must match exactly:
-
-- `package.json`
-- `src-tauri/Cargo.toml`
-- `src-tauri/Cargo.lock` (`zhiforge` package entry)
-- `src-tauri/tauri.conf.json`
+Before every release, package.json, src-tauri/Cargo.toml, the learnweave package entry in Cargo.lock, and src-tauri/tauri.conf.json must match.
 
 ## Release artifacts
 
-A stable Windows release should include:
-
-- `ZhiForge_X.Y.Z_x64-setup.exe` (NSIS)
-- `ZhiForge_X.Y.Z_x64_en-US.msi` (MSI, when produced by the runner)
-- `ZhiForge-vX.Y.Z-Windows-x64-Portable.exe`
-- SHA-256 checksums
-- Release notes / changelog summary
+A stable Windows release should include the Tauri installer bundle(s), LearnWeave-vX.Y.Z-Windows-x64-Portable.exe, SHA-256 checksums, and release notes.
 
 ## Release gate
 
-Before publishing a stable release:
+1. pnpm check
+2. pnpm build
+3. cargo test --manifest-path src-tauri/Cargo.toml
+4. cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings when used for a stable release gate
+5. pnpm tauri build
+6. verify installer/MSI/portable artifact names and hashes
+7. commit and tag vX.Y.Z
 
-1. `pnpm check`
-2. `pnpm build`
-3. `cargo test --manifest-path src-tauri/Cargo.toml`
-4. `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`
-5. `pnpm tauri build`
-6. Verify installer / MSI / portable artifact names and hashes.
-7. Commit the release state.
-8. Create annotated or GitHub release tag `vX.Y.Z` from that commit.
-9. Upload the artifacts to the GitHub Release.
-
-## Public history
-
-Versions before `1.0.0` were internal development snapshots. The public stable version history begins at `v1.0.0`.
+Versions before 1.0.0 were internal development snapshots.

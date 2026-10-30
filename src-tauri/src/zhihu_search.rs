@@ -8,7 +8,8 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
-const SERVICE: &str = "ZhiForge";
+const SERVICE: &str = "LearnWeave";
+const LEGACY_SERVICE: &str = "ZhiForge";
 const CREDENTIAL_ACCOUNT: &str = "zhihu:access-secret";
 const SEARCH_URL: &str = "https://developer.zhihu.com/api/v1/content/zhihu_search";
 const GLOBAL_SEARCH_URL: &str = "https://developer.zhihu.com/api/v1/content/global_search";
@@ -83,15 +84,23 @@ pub struct ZhihuSearchResult {
     pub empty_reason: String,
 }
 
-fn credential_entry() -> Result<Entry, String> {
-    Entry::new(SERVICE, CREDENTIAL_ACCOUNT)
+fn credential_entry_for(service: &str) -> Result<Entry, String> {
+    Entry::new(service, CREDENTIAL_ACCOUNT)
         .map_err(|error| format!("知乎 Access Secret 凭证存储不可用: {error}"))
+}
+
+fn credential_entry() -> Result<Entry, String> {
+    credential_entry_for(SERVICE)
 }
 
 fn load_access_secret() -> Result<String, String> {
     match credential_entry()?.get_password() {
-        Ok(secret) => Ok(secret),
-        Err(KeyringError::NoEntry) => Ok(String::new()),
+        Ok(secret) if !secret.is_empty() => Ok(secret),
+        Ok(_) | Err(KeyringError::NoEntry) => match credential_entry_for(LEGACY_SERVICE)?.get_password() {
+            Ok(secret) => Ok(secret),
+            Err(KeyringError::NoEntry) => Ok(String::new()),
+            Err(error) => Err(format!("读取旧版知乎 Access Secret 失败: {error}")),
+        },
         Err(error) => Err(format!("读取知乎 Access Secret 失败: {error}")),
     }
 }

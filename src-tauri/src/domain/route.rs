@@ -20,3 +20,13 @@ pub struct ActionRoute {
     #[serde(default)]
     pub options: GenerationOptions,
 }
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskRoute {
+    pub primary: ModelRef,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fallbacks: Vec<ModelRef>,
+    #[serde(default)]
+    pub options: GenerationOptions,
+}

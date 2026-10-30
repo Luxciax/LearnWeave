@@ -19,7 +19,7 @@ impl DiagnosticLog {
             .map(PathBuf::from)
             .ok_or_else(|| "APPDATA is unavailable".to_string())?;
         Ok(Self {
-            path: root.join("ZhiForge").join("logs").join("app.log"),
+            path: root.join("LearnWeave").join("logs").join("app.log"),
             lock: Mutex::new(()),
         })
     }

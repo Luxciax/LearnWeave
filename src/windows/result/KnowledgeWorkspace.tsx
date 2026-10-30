@@ -23,6 +23,7 @@ interface KnowledgeWorkspaceProps {
   onOpenSettings: () => void
   searchRequest?: { query: string; nonce: number } | null
   onSearchRequestConsumed?: () => void
+  captureRequestNonce?: number
 }
 
 const NAV_ITEMS: Array<{ id: WorkspaceView; label: string; icon: typeof Search }> = [
@@ -36,7 +37,7 @@ const NAV_ITEMS: Array<{ id: WorkspaceView; label: string; icon: typeof Search }
   { id: 'tasks', label: 'AI 任务', icon: Activity }
 ]
 
-export function KnowledgeWorkspace({ onOpenSettings, searchRequest = null, onSearchRequestConsumed }: KnowledgeWorkspaceProps) {
+export function KnowledgeWorkspace({ onOpenSettings, searchRequest = null, onSearchRequestConsumed, captureRequestNonce = 0 }: KnowledgeWorkspaceProps) {
   const [view, setView] = useState<WorkspaceView>('today')
   const [selectedKnowledgeId, setSelectedKnowledgeId] = useState<string | null>(null)
   const [selectedQuestionId, setSelectedQuestionId] = useState<string | null>(null)
@@ -48,6 +49,10 @@ export function KnowledgeWorkspace({ onOpenSettings, searchRequest = null, onSea
   const [researchTarget, setResearchTarget] = useState<{ planId: string | null; gapId: string | null }>({ planId: null, gapId: null })
   const [searchSeed, setSearchSeed] = useState('')
   const [captureOpen, setCaptureOpen] = useState(false)
+
+  useEffect(() => {
+    if (captureRequestNonce > 0) setCaptureOpen(true)
+  }, [captureRequestNonce])
 
   useEffect(() => {
     if (!searchRequest) return
@@ -278,10 +283,10 @@ export function KnowledgeWorkspace({ onOpenSettings, searchRequest = null, onSea
 
   return (
     <section className="knowledge-workspace">
-      <aside className="knowledge-sidebar" aria-label="ZhiForge 导航">
+      <aside className="knowledge-sidebar" aria-label="LearnWeave 导航">
         <div className="knowledge-sidebar-brand">
           <BookOpen size={17} strokeWidth={1.8} />
-          <strong>ZhiForge</strong>
+          <strong>LearnWeave</strong>
         </div>
         <button className="knowledge-capture-button" type="button" onClick={() => setCaptureOpen(true)}>
           <Plus size={16} strokeWidth={1.9} />

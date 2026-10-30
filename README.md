@@ -1,56 +1,60 @@
-# ZhiForge
+# LearnWeave
 
-ZhiForge is a local-first Windows desktop assistant for turning useful reading into knowledge you can actually recall, explain, and reuse.
+LearnWeave is a local-first Windows knowledge learning workstation for turning useful information into knowledge you can recall, explain, and reuse.
 
-It combines a low-distraction selection toolbar with a learning workflow built around source-grounded extraction, active recall, feedback, and scheduled review. Zhihu content has a dedicated search and reading flow, while translation and other selection actions remain available anywhere on the desktop.
+The core loop is **Capture → Inbox → Knowledge → Active Recall → Feedback → Review**. One-shot desktop AI actions such as translation, explanation, summarization, polishing, and custom prompts remain separate from the knowledge Inbox.
 
-## What ZhiForge Does
+## What LearnWeave Does
 
-- Select text anywhere on Windows and open a compact floating toolbar.
-- Translate, explain, summarize, polish, or run custom AI actions without leaving the current app.
-- Internalize selected content into a structured knowledge unit.
-- Generate source-grounded recall, explanation, and application questions.
-- Save answers before judging so a failed model call never forces you to retype your response.
-- Show what you understood, what you missed, and the exact source evidence used for feedback.
+- Capture selected desktop text, pasted text, public web URLs, and text-based PDFs.
+- Use the optional Browser Helper to enrich selections from ordinary web pages; Zhihu keeps richer page-specific metadata.
+- Search external sources from **Discover**: Wikipedia, arXiv, Stack Overflow, Hacker News, RSS/Atom, Zhihu, Brave Search, Tavily, Exa, and user-defined HTTP/JSON connectors.
+- Route every saved learning source through the Inbox before it becomes formal knowledge.
+- Extract source-grounded knowledge units and Evidence.
+- Generate recall, explanation, and application questions.
+- Judge answers against stored source Evidence rather than outside facts.
 - Track mastery and schedule weak or due knowledge for review.
-- Search Zhihu inside ZhiForge, read an answer in a focused reader, select a useful passage, and internalize it directly.
-- Reopen the original source when you need to verify context instead of relying only on an AI summary.
+- Configure different AI models for extraction, question generation, assessment, review planning, and research.
+- Record provider-reported token usage by learning task.
+- Keep provider and connector credentials in Windows Credential Manager.
 
-## Core Learning Flow
+## Capture
 
-```text
-Read a useful answer
-      ↓
-Select the important passage
-      ↓
-Internalize
-      ↓
-Structured knowledge + source evidence
-      ↓
-Active-recall question
-      ↓
-Answer in your own words
-      ↓
-Source-grounded feedback
-      ↓
-Return to the exact evidence when needed
-      ↓
-Review again when due
-```
+The global **捕获** entry supports pasted text, public HTTP(S) URLs, local PDF text extraction, desktop selection, Browser Helper context, and Zhihu Reader selection.
 
-ZhiForge intentionally treats the human source as the authority for the learning loop. AI is used to extract, ask, and evaluate, but feedback is constrained by the stored knowledge unit and its source evidence.
+You can open Capture from the sidebar, tray menu, or the global **Ctrl+Shift+Space** shortcut.
 
-## Highlights
+URL capture blocks localhost/private-network targets, validates redirect destinations, applies a 20-second timeout, and limits responses to 5 MB.
 
-- **Local-first knowledge storage** — captured sources, knowledge units, evidence, questions, attempts, review state, and AI jobs are stored locally in SQLite.
-- **Evidence-linked learning** — generated questions and judged attempts keep references to exact stored evidence.
-- **Review scheduling** — weak and due items are prioritized automatically instead of making you manage a manual study queue.
-- **Zhihu workflow** — built-in search, focused answer reader, text selection, source attribution, and internalization.
-- **Desktop selection tools** — translation and other AI actions remain available system-wide.
-- **Multiple model protocols** — OpenAI-compatible Chat Completions, OpenAI Responses API, Anthropic Messages API, and Google Gemini API.
-- **Custom providers and routes** — configure models, headers, generation options, fallbacks, action prompts, and per-action routes.
-- **Windows-native credential storage** — provider credentials are stored at runtime with Windows Credential Manager.
-- **Single-instance desktop app** — tray and autostart support are available for normal Windows usage.
+PDF capture is local-only and currently extracts embedded text. Scanned/image-only PDFs need OCR before capture.
+
+## Discover and Connectors
+
+Discover is for finding material you do not already have. Capture is for material you already have.
+
+Built-in public connectors use anonymous access where the upstream API permits it. Brave, Tavily, and Exa use user-supplied keys stored in Windows Credential Manager. Custom HTTP/JSON connectors support a GET search endpoint, query parameter, dot-path mappings for result fields, and an optional API-key header.
+
+Zhihu remains a dedicated connector with its existing search/reader workflow instead of defining the product itself.
+
+## AI Routing
+
+LearnWeave supports OpenAI-compatible Chat Completions, OpenAI Responses, Anthropic Messages, and Google Gemini.
+
+Learning tasks can use independent primary/fallback models. If a task has no dedicated route it falls back to the existing internalize route. Structured learning tasks use native JSON response mode where the protocol supports it, with parse/validation and one repair pass still enforcing the final contract.
+
+Provider presets are included for DeepSeek, Qwen/Model Studio, Kimi/Moonshot, GLM, Doubao/Ark, Ollama, and LM Studio. Presets fill protocol and API base only; model names remain user-selectable.
+
+## Local Data and Upgrade Compatibility
+
+Knowledge data is stored locally in SQLite. Settings and secrets stay local.
+
+The application identity is now **LearnWeave** (com.learnweave.app). Existing ZhiForge installations remain readable:
+
+- if the new LearnWeave database does not exist, LearnWeave can continue using the existing ZhiForge database directory;
+- settings fall back to the existing ZhiForge config when no new LearnWeave config exists;
+- AI and Zhihu credentials fall back to the legacy ZhiForge Windows Credential Manager service.
+
+The compatibility identifiers are intentionally retained in code so upgrading does not make existing data or credentials appear lost.
 
 ## Downloads
 
@@ -58,109 +62,33 @@ Windows builds are published through GitHub Releases:
 
 https://github.com/Luxciax/LearnWeave/releases/latest
 
-Release assets are built on GitHub-hosted Windows runners. The release workflow publishes the Windows installer bundles generated by Tauri, including NSIS `.exe` and MSI `.msi` packages when available.
-
-## System Requirements
-
-- Windows 10 or Windows 11
-- WebView2 runtime
-- An AI provider API key for AI-powered actions and knowledge processing
-
-The application does not bundle personal provider credentials.
+The Windows workflow builds Tauri NSIS/MSI bundles and a portable executable when available.
 
 ## Development
 
-### Requirements
+Requirements: Windows, Node.js 22+, pnpm, Rust stable with the MSVC toolchain, and the Tauri 2 Windows prerequisites.
 
-- Windows
-- Node.js 22 or newer
-- pnpm
-- Rust stable with the MSVC toolchain
-- Tauri 2 Windows prerequisites
-
-Install dependencies:
-
-```bash
-pnpm install
-```
-
-Start the Tauri development build:
-
-```bash
-pnpm tauri dev
-```
-
-Validate the frontend:
-
-```bash
-pnpm check
-pnpm build
-```
-
-Validate the Rust backend:
-
-```bash
-cargo test --manifest-path src-tauri/Cargo.toml
-cargo check --manifest-path src-tauri/Cargo.toml
-```
-
-Build Windows bundles locally:
-
-```bash
-pnpm tauri build
-```
-
-## Release Process
-
-ZhiForge uses GitHub Actions for release builds.
-
-1. Keep the version synchronized in `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`.
-2. Push the release commit to `main`.
-3. Create and push a version tag such as `v1.0.0`.
-4. GitHub Actions builds the Windows Tauri bundles on a GitHub-hosted Windows runner.
-5. The workflow creates the matching GitHub Release and uploads the generated installer assets.
-
-The workflow can also be started manually from the GitHub Actions page for build verification without creating a release.
-
-## Data and Credential Handling
-
-ZhiForge stores its application data locally. Provider credentials entered in Settings are stored with Windows Credential Manager rather than embedded in the repository or committed configuration files.
-
-The repository contains only public API endpoints, protocol field names, and empty/default configuration values required by the application.
-
-## Browser Helper
-
-The optional browser helper under `browser-extension/` can enrich desktop captures with Zhihu page metadata and nearby context. It communicates with ZhiForge through a local bridge on `127.0.0.1` and is not required for the built-in Zhihu search and reader flow.
+Standard validation: pnpm check, pnpm build, cargo test --manifest-path src-tauri/Cargo.toml, and pnpm tauri build.
 
 ## Technology
 
-- Tauri 2
-- Rust
-- React 19
-- TypeScript
-- Vite
-- SQLite via `rusqlite`
+- Tauri 2 / Rust
+- React 19 / TypeScript / Vite
+- SQLite via rusqlite
+- PDF.js for local PDF text extraction
 - Windows UI Automation
 - Windows Credential Manager
 
 ## Attribution
 
-ZhiForge is an independent project. Its early desktop selection interaction research was informed by Cherry Studio, including selection-translation patterns and model-provider compatibility concepts.
+LearnWeave, formerly ZhiForge, is an independent project. Its early desktop selection interaction research was informed by Cherry Studio, including selection-translation patterns and model-provider compatibility concepts.
 
-Cherry Studio is developed by CherryHQ and its contributors and is distributed under the GNU Affero General Public License v3.0:
+Cherry Studio: https://github.com/CherryHQ/cherry-studio
 
-https://github.com/CherryHQ/cherry-studio
-
-ZhiForge is not affiliated with, endorsed by, or an official fork of Cherry Studio or CherryHQ. See [`NOTICE`](NOTICE) for additional attribution information.
+LearnWeave is not affiliated with, endorsed by, or an official fork of Cherry Studio or CherryHQ. See NOTICE.
 
 ## License
 
-Starting with **v1.4.0**, ZhiForge is source-available under the **PolyForm Noncommercial License 1.0.0 (`PolyForm-Noncommercial-1.0.0`)**.
+Starting with **v1.4.0**, the project is source-available under the **PolyForm Noncommercial License 1.0.0**. Commercial or business use requires a separate written commercial license.
 
-Personal and other noncommercial uses permitted by the PolyForm license remain free. **Commercial or business use requires a separate written commercial license**, which may be paid depending on the intended use and deployment.
-
-See [`LICENSE`](LICENSE) for the public noncommercial license and [`COMMERCIAL_LICENSE.md`](COMMERCIAL_LICENSE.md) for commercial licensing information.
-
-This is a source-available license and is **not an OSI-approved open-source license**.
-
-Versions released through **v1.3.0** were distributed under `AGPL-3.0-only`. Those prior license grants are not retroactively revoked.
+See LICENSE, COMMERCIAL_LICENSE.md, and NOTICE. Versions released through **v1.3.0** were distributed under AGPL-3.0-only; those prior grants are not retroactively revoked.

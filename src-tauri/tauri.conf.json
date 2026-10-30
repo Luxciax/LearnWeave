@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "ZhiForge",
+  "productName": "LearnWeave",
   "version": "1.4.0",
-  "identifier": "com.zhiforge.app",
+  "identifier": "com.learnweave.app",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://127.0.0.1:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "toolbar",
-        "title": "ZhiForge",
+        "title": "LearnWeave",
         "width": 350,
         "height": 43,
         "visible": false,
@@ -31,7 +31,7 @@
       },
       {
         "label": "result",
-        "title": "ZhiForge",
+        "title": "LearnWeave",
         "width": 1120,
         "height": 760,
         "minWidth": 640,

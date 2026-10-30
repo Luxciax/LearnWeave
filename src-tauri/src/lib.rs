@@ -14,9 +14,9 @@ use tauri::Manager;
 
 pub fn run() {
     let settings_state =
-        settings::SettingsState::load_default().expect("failed to initialize ZhiForge settings");
+        settings::SettingsState::load_default().expect("failed to initialize LearnWeave settings");
     let diagnostic_log = diagnostics::DiagnosticLog::new_default()
-        .expect("failed to initialize ZhiForge diagnostics");
+        .expect("failed to initialize LearnWeave diagnostics");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -35,6 +35,7 @@ pub fn run() {
             ai::cancel_ai,
             ai::list_models,
             ai::model_capabilities,
+            ai::usage::ai_usage_summary,
             ai::load_api_key,
             ai::save_api_key,
             ai::load_provider_api_key,
@@ -50,6 +51,10 @@ pub fn run() {
             database::safety::audit_log_list,
             browser_bridge::open_source_url,
             connectors::web_url::web_url_fetch,
+            connectors::credential::connector_api_key_configured,
+            connectors::credential::connector_save_api_key,
+            connectors::discovery::discover_connectors,
+            connectors::discovery::discover_search,
             knowledge::knowledge_capture,
             knowledge::knowledge_list,
             knowledge::knowledge_get,
@@ -143,6 +148,7 @@ pub fn run() {
                 database::DatabaseState::initialize(app.handle()).map_err(std::io::Error::other)?;
             app.manage(database);
             browser_bridge::start(app.handle());
+            platform::hotkey::start(app.handle().clone());
             selection::start(app.handle().clone())?;
             platform::tray::setup(app)?;
             if !platform::window::launched_from_autostart() {
@@ -151,5 +157,5 @@ pub fn run() {
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("failed to run ZhiForge");
+        .expect("failed to run LearnWeave");
 }

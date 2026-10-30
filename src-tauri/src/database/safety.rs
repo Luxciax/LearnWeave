@@ -777,7 +777,7 @@ fn query_relations(
 }
 
 fn render_markdown_export(exported_at: i64, knowledge: &[ExportKnowledge]) -> String {
-    let mut output = format!("# ZhiForge Knowledge Export\n\nExported at: {exported_at}\n\n");
+    let mut output = format!("# LearnWeave Knowledge Export\n\nExported at: {exported_at}\n\n");
     for item in knowledge {
         let title = if item.core_claim.trim().is_empty() {
             item.source
@@ -975,7 +975,7 @@ mod tests {
 
     #[test]
     fn online_backup_preserves_backup_point_data() {
-        let root = std::env::temp_dir().join(format!("zhiforge-backup-test-{}", Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("learnweave-backup-test-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         let database_path = root.join("knowledge.db");
         let source = Connection::open(&database_path).unwrap();
@@ -1008,7 +1008,7 @@ mod tests {
 
     #[test]
     fn restore_round_trip_returns_live_database_to_backup_point() {
-        let root = std::env::temp_dir().join(format!("zhiforge-restore-test-{}", Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("learnweave-restore-test-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         let database_path = root.join("knowledge.db");
         let mut live = Connection::open(&database_path).unwrap();

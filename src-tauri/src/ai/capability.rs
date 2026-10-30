@@ -12,6 +12,11 @@ pub struct ModelCapabilities {
     pub top_p: bool,
     pub max_output_tokens: bool,
     pub reasoning: bool,
+    pub json_mode: bool,
+    pub json_schema: bool,
+    pub streaming: bool,
+    pub vision: bool,
+    pub context_window: Option<u32>,
 }
 
 impl ModelCapabilities {
@@ -22,6 +27,11 @@ impl ModelCapabilities {
             top_p: true,
             max_output_tokens: true,
             reasoning,
+            json_mode: true,
+            json_schema: false,
+            streaming: true,
+            vision: false,
+            context_window: None,
         }
     }
 }
@@ -37,13 +47,31 @@ pub fn infer(adapter: ProviderAdapter, model: &str) -> ModelCapabilities {
                 top_p: !reasoning,
                 max_output_tokens: true,
                 reasoning,
+                json_mode: true,
+                json_schema: true,
+                streaming: true,
+                vision: model.contains("vision") || model.contains("gpt-4o") || model.contains("gpt-5"),
+                context_window: None,
             }
         }
         ProviderAdapter::OpenAiCompatible => {
-            ModelCapabilities::all(is_openai_reasoning_model(&model))
+            let mut caps = ModelCapabilities::all(is_openai_reasoning_model(&model));
+            caps.vision = model.contains("vision") || model.contains("vl") || model.contains("gpt-4o");
+            caps
         }
-        ProviderAdapter::Anthropic => ModelCapabilities::all(is_anthropic_reasoning_model(&model)),
-        ProviderAdapter::Gemini => ModelCapabilities::all(is_gemini_reasoning_model(&model)),
+        ProviderAdapter::Anthropic => {
+            let mut caps = ModelCapabilities::all(is_anthropic_reasoning_model(&model));
+            caps.json_mode = false;
+            caps.json_schema = false;
+            caps.vision = model.contains("claude");
+            caps
+        }
+        ProviderAdapter::Gemini => {
+            let mut caps = ModelCapabilities::all(is_gemini_reasoning_model(&model));
+            caps.json_schema = true;
+            caps.vision = true;
+            caps
+        },
     }
 }
 
@@ -112,6 +140,11 @@ mod tests {
                 top_p: false,
                 max_output_tokens: true,
                 reasoning: true,
+                json_mode: true,
+                json_schema: false,
+                streaming: true,
+                vision: false,
+                context_window: None,
             },
         );
         assert_eq!(constrained.temperature, None);

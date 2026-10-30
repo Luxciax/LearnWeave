@@ -1,4 +1,4 @@
-# ZhiForge Codex E2E Test Plan
+# LearnWeave Codex E2E Test Plan
 
 > Purpose: finish the tests that require real external credentials or network services after the no-API productization QA has passed.
 >
@@ -7,9 +7,9 @@
 ## 0. Safety rules
 
 1. Do **not** print, echo, log, commit, paste, or return any API key / Access Secret.
-2. Use credentials already configured by the user in ZhiForge / Windows Credential Manager. If a required credential is absent, report which credential class is missing and stop only that test group.
+2. Use credentials already configured by the user in LearnWeave / Windows Credential Manager. If a required credential is absent, report which credential class is missing and stop only that test group.
 3. Do not overwrite the user's existing provider credentials merely to test an error path.
-4. Before tests that write knowledge data, create a manual database backup from ZhiForge's `数据与备份` page and record only the backup filename.
+4. Before tests that write knowledge data, create a manual database backup from LearnWeave's `数据与备份` page and record only the backup filename.
 5. Do not permanently delete user data. Test-created Knowledge Units may be moved to Trash after verification; do not empty Trash.
 6. Keep a list of every Source ID / Knowledge Unit ID / Review Session ID created by this run.
 7. Treat `preview/` as unrelated user material. Do not modify or remove it.
@@ -21,14 +21,14 @@ Do not waste time rerunning these unless an API/E2E failure suggests a regressio
 
 - Windows single-instance behavior.
 - Windows Credential Manager self-test.
-- SQLite schema v12 and `PRAGMA quick_check = ok`.
+- SQLite schema v17 and `PRAGMA quick_check = ok`.
 - automatic backup 24h deduplication.
 - isolated 10k Knowledge / 2k Source / 20k Relation stress tests.
 - Library full-database search performance fix for correlated FTS.
 - Review Queue, Graph, Source Library and Knowledge Health large-database query performance.
 - online SQLite backup consistency.
 - readable export performance at 1k and 10k Knowledge Units.
-- full Rust suite: 122 passed / 0 failed / 1 ignored.
+- full Rust suite and Windows bundle must match the current main branch; do not reuse historical pass counts.
 - `pnpm check` and production frontend build.
 - optimized Windows Release build and Release EXE startup smoke.
 
@@ -54,14 +54,32 @@ Prove that the configured production AI route can complete one real request end-
 
 1. Read the enabled primary route and fallback route(s) without exposing keys.
 2. Use an existing low-cost action such as translation/polish or the smallest routed request supported by the app.
-3. Use deterministic short input: `ZhiForge keeps source evidence separate from generated knowledge.`
+3. Use deterministic short input: `LearnWeave keeps source evidence separate from generated knowledge.`
 4. Verify response is non-empty, no raw secret appears in logs, and normal timeout/retry logic is not spuriously triggered.
 5. If the primary route naturally fails before output and fallback is configured, verify fallback once. Do not intentionally corrupt credentials.
 
 ### Pass
-At least one configured real AI route returns a valid response through ZhiForge's production execution path.
+At least one configured real AI route returns a valid response through LearnWeave's production execution path.
 
-## 4. Zhihu Developer API search and Reader E2E
+## 4. Multi-source Discover / Capture E2E
+
+Verify at least one public Discover connector without credentials (Wikipedia, arXiv, Stack Overflow, Hacker News, or RSS), then verify:
+- results deserialize into the common Discover result shape;
+- opening the original URL works when present;
+- **加入收件箱** creates a Source with the expected connectorId;
+- URL capture rejects private/local targets and unsafe redirects;
+- a text-based PDF can be parsed locally and captured as sourceKind=document, connectorId=pdf-upload;
+- paid/custom connectors are tested only when their user-supplied credentials/endpoints are already configured.
+
+## 5. AI task routing and usage E2E
+
+Configure one non-default learning-task route if suitable, run that task, and verify:
+- the configured primary/fallback route is used;
+- an unconfigured task still follows internalize;
+- provider-reported token usage appears under **学习 AI**;
+- structured tasks return valid JSON through native JSON mode where supported, while final schema validation remains active.
+
+## 6. Zhihu Developer API search and Reader E2E
 
 ### Goal
 Verify the real Zhihu Access Secret, search API, result parsing, sorting and Reader open flow.
@@ -77,7 +95,7 @@ Verify the real Zhihu Access Secret, search API, result parsing, sorting and Rea
 ### Pass
 A real search returns usable results and at least one result opens in Reader.
 
-## 5. Full-answer internalization: one Source -> multiple Knowledge Units
+## 7. Full-answer internalization: one Source -> multiple Knowledge Units
 
 ### Goal
 Verify the v11 Source cardinality change and current AI internalization contract with a real model call.
@@ -105,7 +123,7 @@ Choose one Reader answer containing at least two distinct, independently useful 
 ### Pass
 Real full-answer internalization produces grounded independently reviewable KUs with Source/Evidence/Question/Review integrity.
 
-## 6. Grounded judge: correct / partial / wrong
+## 8. Grounded judge: correct / partial / wrong
 
 Use test-created KUs from section 5. Run three attempts:
 
@@ -128,7 +146,7 @@ For each verify:
 ### Pass
 All three judgement classes produce evidence-grounded feedback and coherent scheduler updates.
 
-## 7. AI Review Plan E2E
+## 9. AI Review Plan E2E
 
 1. Open Review Center and use `智能安排`.
 2. Verify the plan references only supplied due IDs, has no duplicates, selected count equals target count, every analyzed candidate is selected or deferred, and reasons are non-empty.
@@ -140,7 +158,7 @@ All three judgement classes produce evidence-grounded feedback and coherent sche
 ### Pass
 AI prioritizes the bounded session without silently rescheduling deferred knowledge.
 
-## 8. Hybrid semantic search E2E
+## 10. Hybrid semantic search E2E
 
 1. Ensure several test KUs have semantically related but lexically different wording.
 2. Search a phrase directly matching one KU.
@@ -151,7 +169,7 @@ AI prioritizes the bounded session without silently rescheduling deferred knowle
 ### Pass
 Semantic search returns plausible ranked knowledge while validator boundaries hold.
 
-## 9. AI Librarian E2E
+## 11. AI Librarian E2E
 
 Use test-created KUs where possible.
 
@@ -166,7 +184,7 @@ Use test-created KUs where possible.
 ### Pass
 AI Librarian can execute approved reversible organization actions while destructive authority stays gated.
 
-## 10. Cross-feature consistency
+## 12. Cross-feature consistency
 
 After sections 5–9 verify the same test records are consistent across:
 
@@ -182,7 +200,7 @@ After sections 5–9 verify the same test records are consistent across:
 
 Assert sibling KUs are independent in Library/Review but grouped in Source detail; Graph can center on one KU and expose relation/source/topic/tag reasons; Health reacts deterministically; Archive/Trash excludes units from active Graph/Review; Trash restore re-exposes them without deleting Source.
 
-## 11. Network/API failure observations
+## 13. Network/API failure observations
 
 Do **not** sabotage real credentials. For naturally occurring failures record only:
 
@@ -196,7 +214,7 @@ Do **not** sabotage real credentials. For naturally occurring failures record on
 
 Redact Authorization, API key, Access Secret, cookies and tokens.
 
-## 12. Final regression
+## 14. Final regression
 
 From repository root run:
 
@@ -211,7 +229,7 @@ Then run the repository's precise staged secret scan. Talisman low-severity hits
 
 Do not commit unrelated files.
 
-## 13. Cleanup
+## 15. Cleanup
 
 1. Keep the manual pre-test backup.
 2. Move only clearly test-created KUs to Trash if cleanup is desired.
@@ -220,7 +238,7 @@ Do not commit unrelated files.
 5. Do not delete backups.
 6. Leave real user knowledge untouched.
 
-## 14. Required final report
+## 16. Required final report
 
 ### Environment
 - HEAD:

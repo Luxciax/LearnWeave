@@ -9,8 +9,8 @@ export interface ToolbarAction {
   outputMode: OutputMode
 }
 
-const ZHIHU_SEARCH_ACTION: ToolbarAction = {
-  id: 'zhihu-search',
+const DISCOVER_ACTION: ToolbarAction = {
+  id: 'discover',
   label: '搜索',
   primary: true,
   order: -1000,
@@ -53,9 +53,9 @@ function configuredActions(config: AppConfig): ToolbarAction[] {
 
 export function toolbarActions(config: AppConfig | null): ToolbarAction[] {
   const actions = config ? configuredActions(config) : FALLBACK_ACTIONS.map((action) => ({ ...action }))
-  return [{ ...ZHIHU_SEARCH_ACTION }, ...actions]
+  return [{ ...DISCOVER_ACTION }, ...actions]
 }
 
 export function fallbackToolbarActions(): ToolbarAction[] {
-  return [{ ...ZHIHU_SEARCH_ACTION }, ...FALLBACK_ACTIONS.map((action) => ({ ...action }))]
+  return [{ ...DISCOVER_ACTION }, ...FALLBACK_ACTIONS.map((action) => ({ ...action }))]
 }
