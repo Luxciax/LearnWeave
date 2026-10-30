@@ -25,9 +25,21 @@ impl SettingsRepository for FileSettingsRepository {
         }
         let raw = fs::read_to_string(&self.path)
             .map_err(|error| format!("failed to read settings: {error}"))?;
-        let config: AppConfig = serde_json::from_str(&raw)
+        let mut value: serde_json::Value = serde_json::from_str(&raw)
+            .map_err(|error| format!("failed to parse settings: {error}"))?;
+        let migrated = value.get("schemaVersion").and_then(serde_json::Value::as_u64) == Some(2);
+        if migrated {
+            value["schemaVersion"] = serde_json::json!(3);
+            if value.get("taskRoutes").is_none() {
+                value["taskRoutes"] = serde_json::json!({});
+            }
+        }
+        let config: AppConfig = serde_json::from_value(value)
             .map_err(|error| format!("failed to parse settings: {error}"))?;
         config.validate()?;
+        if migrated {
+            self.save(&config)?;
+        }
         Ok(config)
     }
 

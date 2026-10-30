@@ -40,6 +40,12 @@ pub struct ExecutionPlan {
     pub targets: Vec<ExecutionTarget>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct ExecutionResult {
+    pub target: ExecutionTarget,
+    pub usage: provider::Usage,
+}
+
 pub fn resolve_plan(config: &AppConfig, action_id: &str) -> Result<ExecutionPlan, String> {
     let action_id = action_id.trim();
     let definition = config
@@ -110,6 +116,21 @@ pub fn resolve_plan(config: &AppConfig, action_id: &str) -> Result<ExecutionPlan
     })
 }
 
+pub fn resolve_task_targets(config: &AppConfig, task: &str) -> Result<Vec<ExecutionTarget>, String> {
+    if let Some(route) = config.task_routes.get(task.trim()) {
+        let mut targets = Vec::new();
+        let mut seen = HashSet::<(String, String)>::new();
+        push_model_ref(config, &route.primary, &route.options, &mut targets, &mut seen)?;
+        for fallback in &route.fallbacks {
+            push_model_ref(config, fallback, &route.options, &mut targets, &mut seen)?;
+        }
+        if !targets.is_empty() {
+            return Ok(targets);
+        }
+    }
+    Ok(resolve_plan(config, "internalize")?.targets)
+}
+
 pub fn hydrate_provider(target: &ExecutionTarget) -> Result<ProviderConfig, String> {
     Ok(ProviderConfig {
         adapter: target.adapter,
@@ -125,18 +146,36 @@ pub async fn execute_plan<H, S, C>(
     plan: ExecutionPlan,
     prompt: &Prompt,
     hydrate: H,
-    mut on_start: S,
-    mut on_chunk: C,
+    on_start: S,
+    on_chunk: C,
 ) -> Result<(), AiRuntimeError>
 where
     H: Fn(&ExecutionTarget) -> Result<ProviderConfig, String>,
     S: FnMut(&ExecutionTarget, usize),
     C: FnMut(String) + Send,
 {
-    let target_count = plan.targets.len();
+    execute_targets(client, plan.targets, prompt, hydrate, on_start, on_chunk)
+        .await
+        .map(|_| ())
+}
+
+pub async fn execute_targets<H, S, C>(
+    client: &Client,
+    targets: Vec<ExecutionTarget>,
+    prompt: &Prompt,
+    hydrate: H,
+    mut on_start: S,
+    mut on_chunk: C,
+) -> Result<ExecutionResult, AiRuntimeError>
+where
+    H: Fn(&ExecutionTarget) -> Result<ProviderConfig, String>,
+    S: FnMut(&ExecutionTarget, usize),
+    C: FnMut(String) + Send,
+{
+    let target_count = targets.len();
     let mut failures = Vec::<AiRuntimeError>::new();
 
-    for (index, target) in plan.targets.into_iter().enumerate() {
+    for (index, target) in targets.into_iter().enumerate() {
         let runtime_provider = match hydrate(&target) {
             Ok(provider) => provider,
             Err(error) => {
@@ -164,7 +203,7 @@ where
         .await;
 
         match result {
-            Ok(()) => return Ok(()),
+            Ok(usage) => return Ok(ExecutionResult { target, usage }),
             Err(error) if emitted => return Err(error),
             Err(error) => {
                 let mut routed_error = error;

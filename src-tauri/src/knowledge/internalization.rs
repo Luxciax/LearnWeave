@@ -629,13 +629,7 @@ where
     T: DeserializeOwned,
     V: Fn(T) -> Result<T, String>,
 {
-    let raw = ai::collect_routed_text(
-        app,
-        INTERNALIZE_ACTION,
-        system.to_string(),
-        user.to_string(),
-    )
-    .await?;
+    let raw = ai::collect_task_text(app, task, system.to_string(), user.to_string()).await?;
     match parse_and_validate::<T, _>(&raw, &validator) {
         Ok(value) => Ok(value),
         Err(first_error) => {
@@ -649,9 +643,7 @@ where
                 "original_input": user,
             }))
             .map_err(|error| format!("failed to serialize repair input: {error}"))?;
-            let repaired =
-                ai::collect_routed_text(app, INTERNALIZE_ACTION, repair_system, repair_user)
-                    .await?;
+            let repaired = ai::collect_task_text(app, task, repair_system, repair_user).await?;
             parse_and_validate::<T, _>(&repaired, &validator).map_err(|error| {
                 format!("{task} structured output remained invalid after one repair: {error}")
             })

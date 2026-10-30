@@ -4,6 +4,7 @@ mod error;
 mod execution;
 mod prompt;
 mod provider;
+pub mod usage;
 
 use futures_util::future::{AbortHandle, Abortable};
 use reqwest::Client;
@@ -139,6 +140,43 @@ impl AiRuntime {
             active: Arc::new(Mutex::new(None)),
         }
     }
+}
+
+pub(crate) async fn collect_task_text(
+    app: &AppHandle,
+    task: &str,
+    system: String,
+    user: String,
+) -> Result<String, String> {
+    let runtime = app.state::<AiRuntime>();
+    let settings = app.state::<SettingsState>();
+    let targets = execution::resolve_task_targets(&settings.snapshot()?, task)?;
+    let prompt = prompt::Prompt { system, user };
+    let output = Arc::new(Mutex::new(String::new()));
+    let output_sink = output.clone();
+    let result = execution::execute_targets(
+        &runtime.client,
+        targets,
+        &prompt,
+        execution::hydrate_provider,
+        |_target, _attempt| {},
+        move |chunk| {
+            if let Ok(mut buffer) = output_sink.lock() {
+                buffer.push_str(&chunk);
+            }
+        },
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+    usage::record(app, task, &result.target, &result.usage);
+    let text = output
+        .lock()
+        .map_err(|_| "AI output buffer lock poisoned".to_string())?
+        .clone();
+    if text.trim().is_empty() {
+        return Err(error::AiRuntimeError::empty().to_string());
+    }
+    Ok(text)
 }
 
 pub(crate) async fn collect_routed_text(
@@ -285,7 +323,7 @@ pub async fn start_routed_ai_action(
         );
 
         match Abortable::new(routed, registration).await {
-            Ok(Ok(())) => {
+            Ok(Ok(_usage)) => {
                 event_app.state::<DiagnosticLog>().record("ai.done", "routed request completed");
                 emit_to_result(
                     &event_app,
@@ -369,7 +407,7 @@ pub async fn start_ai_action(
         });
 
         match Abortable::new(stream_request, registration).await {
-            Ok(Ok(())) => {
+            Ok(Ok(_usage)) => {
                 event_app.state::<DiagnosticLog>().record("ai.done", "legacy request completed");
                 emit_to_result(
                     &event_app,

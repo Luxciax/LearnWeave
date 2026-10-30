@@ -35,6 +35,7 @@ pub fn run() {
             ai::cancel_ai,
             ai::list_models,
             ai::model_capabilities,
+            ai::usage::ai_usage_summary,
             ai::load_api_key,
             ai::save_api_key,
             ai::load_provider_api_key,

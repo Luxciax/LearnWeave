@@ -1,16 +1,16 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use crate::domain::{
     action::{builtin_actions, ActionDefinition},
     app_rule::AppRule,
     provider::ProviderProfile,
-    route::ActionRoute,
+    route::{ActionRoute, TaskRoute},
     settings::UiPreferences,
     trigger::TriggerProfile,
 };
 
-pub const CURRENT_SCHEMA_VERSION: u32 = 2;
+pub const CURRENT_SCHEMA_VERSION: u32 = 3;
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -22,6 +22,8 @@ pub struct AppConfig {
     pub actions: Vec<ActionDefinition>,
     #[serde(default)]
     pub routes: Vec<ActionRoute>,
+    #[serde(default)]
+    pub task_routes: BTreeMap<String, TaskRoute>,
     #[serde(default)]
     pub trigger: TriggerProfile,
     #[serde(default)]
@@ -37,6 +39,7 @@ impl Default for AppConfig {
             providers: Vec::new(),
             actions: builtin_actions(),
             routes: Vec::new(),
+            task_routes: BTreeMap::new(),
             trigger: TriggerProfile::default(),
             app_rules: Vec::new(),
             ui: UiPreferences::default(),
@@ -127,6 +130,22 @@ impl AppConfig {
             if !action_ids.insert(action.id.as_str()) {
                 return Err(format!("duplicate action id '{}'", action.id));
             }
+        }
+
+        for (task, route) in &self.task_routes {
+            if task.trim().is_empty()
+                || task.len() > 128
+                || !task.chars().all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))
+            {
+                return Err(format!("invalid AI task route id '{task}'"));
+            }
+            validate_model_ref(task, &route.primary.provider_id, &route.primary.model, &provider_ids)?;
+            for fallback in &route.fallbacks {
+                validate_model_ref(task, &fallback.provider_id, &fallback.model, &provider_ids)?;
+            }
+            route.options
+                .validate()
+                .map_err(|error| format!("AI task route '{task}' has invalid options: {error}"))?;
         }
 
         let mut route_ids = HashSet::new();
