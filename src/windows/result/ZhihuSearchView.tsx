@@ -1,8 +1,8 @@
 import { emit } from '@tauri-apps/api/event'
 import { ArrowLeft, BookmarkPlus, ExternalLink, LoaderCircle, Search } from 'lucide-react'
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { zhihuConnector } from '../../connectors/search-connectors'
 import { captureKnowledge, internalizeKnowledge, openSourceUrl } from '../../services/knowledge-service'
-import { searchZhihu, searchZhihuExpanded } from '../../services/zhihu-service'
 import type { ZhihuSearchItem, ZhihuSearchResult } from '../../types'
 
 interface ZhihuSearchViewProps {
@@ -106,7 +106,7 @@ export function ZhihuSearchView({ initialQuery, onBack, onCaptured, onOpenSettin
     setReader(null)
     setSelectedText('')
     try {
-      setResult(await searchZhihu(value, 10))
+      setResult(await zhihuConnector.search(value, 10))
     } catch (searchError) {
       const message = String(searchError)
       setResult(null)
@@ -126,7 +126,7 @@ export function ZhihuSearchView({ initialQuery, onBack, onCaptured, onOpenSettin
     setExpanding(true)
     setExpandError(null)
     try {
-      const extra = await searchZhihuExpanded(value, 20)
+      const extra = await zhihuConnector.expandSearch!(value, 20)
       setResult((current) => current ? {
         ...current,
         hasMore: extra.hasMore,
@@ -200,6 +200,8 @@ export function ZhihuSearchView({ initialQuery, onBack, onCaptured, onOpenSettin
         : { contextBefore: undefined, contextAfter: undefined }
       const captured = await captureKnowledge({
         platform: 'zhihu',
+        sourceKind: 'web',
+        connectorId: 'zhihu',
         selectedText: normalizedText,
         url: reader.url || undefined,
         title: reader.title || undefined,

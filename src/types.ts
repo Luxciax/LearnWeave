@@ -96,9 +96,12 @@ export interface AiErrorEvent {
 }
 
 export type SourcePlatform = 'zhihu' | 'web' | 'pdf' | 'desktop' | 'manual' | 'unknown'
+export type SourceKind = 'web' | 'desktop' | 'document' | 'manual' | 'unknown'
 
 export interface SourceCaptureInput {
   platform: SourcePlatform
+  sourceKind?: SourceKind
+  connectorId?: string
   selectedText: string
   url?: string
   title?: string
@@ -115,8 +118,10 @@ export interface WebUrlFetchResult {
   text: string
 }
 
-export interface SourceRecord extends SourceCaptureInput {
+export interface SourceRecord extends Omit<SourceCaptureInput, 'sourceKind' | 'connectorId'> {
   id: string
+  sourceKind: SourceKind
+  connectorId: string | null
   contentHash: string
   capturedAt: number
 }
@@ -382,6 +387,8 @@ export interface SourceKnowledgeUnitSummary {
 export interface SourceLibraryItem {
   id: string
   platform: SourcePlatform
+  sourceKind: SourceKind
+  connectorId: string | null
   url: string | null
   title: string | null
   author: string | null

@@ -53,6 +53,8 @@ export function CaptureDialog({ onClose, onCaptured }: CaptureDialogProps) {
         const fetched = await fetchWebUrl(value)
         input = {
           platform: 'web',
+          sourceKind: 'web',
+          connectorId: 'web-url',
           selectedText: fetched.text,
           url: fetched.url,
           title: fetched.title
@@ -60,6 +62,7 @@ export function CaptureDialog({ onClose, onCaptured }: CaptureDialogProps) {
       } else {
         input = {
           platform: 'manual',
+          sourceKind: 'manual',
           selectedText: value
         }
       }
