@@ -164,6 +164,8 @@ pub(crate) fn enrich_capture(app: &AppHandle, mut input: SourceCaptureInput) -> 
     };
 
     input.platform = "zhihu".into();
+    input.source_kind = Some("web".into());
+    input.connector_id = Some("zhihu".into());
     input.url = Some(context.url);
     input.title = context.title;
     input.author = context.author;

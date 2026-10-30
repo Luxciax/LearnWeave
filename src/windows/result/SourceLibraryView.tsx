@@ -1,7 +1,7 @@
 import { AlertTriangle, ArrowLeft, ExternalLink, Search } from 'lucide-react'
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { getSourceDetail, listSources, openSourceUrl } from '../../services/knowledge-service'
-import type { KnowledgeStatus, SourceDetailRecord, SourceLibraryItem, SourcePlatform } from '../../types'
+import type { KnowledgeStatus, SourceDetailRecord, SourceKind, SourceLibraryItem, SourcePlatform, SourceRecord } from '../../types'
 
 interface SourceLibraryViewProps {
   initialSourceId?: string | null
@@ -16,6 +16,19 @@ const PLATFORM_LABELS: Record<SourcePlatform, string> = {
   desktop: '桌面',
   manual: '手动',
   unknown: '未知来源'
+}
+
+const SOURCE_KIND_LABELS: Record<SourceKind, string> = {
+  web: '网页',
+  desktop: '桌面',
+  document: '文档',
+  manual: '手动',
+  unknown: '未知来源'
+}
+
+const CONNECTOR_LABELS: Record<string, string> = {
+  zhihu: '知乎',
+  'web-url': '网页 URL'
 }
 
 const STATUS_LABELS: Record<KnowledgeStatus, string> = {
@@ -37,8 +50,12 @@ const PLATFORM_OPTIONS: Array<{ value: '' | SourcePlatform; label: string }> = [
   { value: 'unknown', label: '未知来源' }
 ]
 
+function sourceLabel(item: Pick<SourceLibraryItem, 'sourceKind' | 'connectorId' | 'platform'> | SourceRecord) {
+  return item.connectorId ? (CONNECTOR_LABELS[item.connectorId] || item.connectorId) : (SOURCE_KIND_LABELS[item.sourceKind] || PLATFORM_LABELS[item.platform])
+}
+
 function sourceTitle(item: SourceLibraryItem) {
-  return item.title?.trim() || item.author?.trim() || `${PLATFORM_LABELS[item.platform]}来源`
+  return item.title?.trim() || item.author?.trim() || `${sourceLabel(item)}来源`
 }
 
 function sourceExcerpt(value: string) {
@@ -47,7 +64,7 @@ function sourceExcerpt(value: string) {
 }
 
 function zhihuDuplicateKey(item: SourceLibraryItem) {
-  if (item.platform !== 'zhihu' || !item.url) return null
+  if ((item.connectorId !== 'zhihu' && item.platform !== 'zhihu') || !item.url) return null
   const canonicalUrl = item.url.split('#')[0].split('?')[0].replace(/\/+$/, '')
   const normalizedText = item.selectedText.replace(/\s+/g, ' ').trim()
   return canonicalUrl && normalizedText ? `${canonicalUrl}\u001f${normalizedText}` : null
@@ -143,7 +160,7 @@ export function SourceLibraryView({ initialSourceId = null, onSourceChange, onOp
         ) : (
           <div className="source-detail-content">
             <header className="source-detail-heading">
-              <span>{PLATFORM_LABELS[detail.source.platform]}</span>
+              <span>{sourceLabel(detail.source)}</span>
               <h1>{detail.source.title || detail.source.author || '未命名来源'}</h1>
               <p>
                 {detail.source.author ? `${detail.source.author} · ` : ''}
@@ -232,7 +249,7 @@ export function SourceLibraryView({ initialSourceId = null, onSourceChange, onOp
             <button type="button" className={`source-item${duplicate ? ' duplicate-suspect' : ''}`} key={item.id} onClick={() => openSource(item.id)}>
               <div className="source-item-main">
                 <div className="source-item-meta">
-                  <span>{PLATFORM_LABELS[item.platform]}</span>
+                  <span>{sourceLabel(item)}</span>
                   {item.author && <strong>{item.author}</strong>}
                   <small>{new Date(item.capturedAt).toLocaleDateString()}</small>
                   {duplicate && <em>历史重复</em>}

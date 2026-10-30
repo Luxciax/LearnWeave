@@ -31,6 +31,10 @@ pub(crate) mod today;
 #[serde(rename_all = "camelCase")]
 pub struct SourceCaptureInput {
     pub platform: String,
+    #[serde(default)]
+    pub source_kind: Option<String>,
+    #[serde(default)]
+    pub connector_id: Option<String>,
     pub selected_text: String,
     #[serde(default)]
     pub url: Option<String>,
@@ -53,6 +57,8 @@ pub struct SourceCaptureInput {
 pub struct SourceRecord {
     pub id: String,
     pub platform: String,
+    pub source_kind: String,
+    pub connector_id: Option<String>,
     pub url: Option<String>,
     pub title: Option<String>,
     pub author: Option<String>,
@@ -160,12 +166,14 @@ pub fn knowledge_capture(
         transaction
             .execute(
                 "INSERT INTO sources(
-                    id, platform, url, title, author, selected_text, context_before, context_after,
-                    application, window_title, content_hash, captured_at
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                    id, platform, source_kind, connector_id, url, title, author, selected_text,
+                    context_before, context_after, application, window_title, content_hash, captured_at
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
                 params![
                     source_id,
                     normalized_platform(&input.platform),
+                    normalized_source_kind(&input),
+                    normalized_connector_id(&input),
                     normalized_optional(&input.url),
                     normalized_optional(&input.title),
                     normalized_optional(&input.author),
@@ -290,6 +298,29 @@ fn normalized_platform(platform: &str) -> &'static str {
     }
 }
 
+fn normalized_source_kind(input: &SourceCaptureInput) -> &'static str {
+    match input.source_kind.as_deref().map(str::trim).map(str::to_ascii_lowercase).as_deref() {
+        Some("web") => "web",
+        Some("desktop") => "desktop",
+        Some("document") => "document",
+        Some("manual") => "manual",
+        Some("unknown") => "unknown",
+        _ => match normalized_platform(&input.platform) {
+            "zhihu" | "web" => "web",
+            "pdf" => "document",
+            "desktop" => "desktop",
+            "manual" => "manual",
+            _ => "unknown",
+        },
+    }
+}
+
+fn normalized_connector_id(input: &SourceCaptureInput) -> Option<String> {
+    normalized_optional(&input.connector_id)
+        .map(|value| value.to_ascii_lowercase())
+        .or_else(|| (normalized_platform(&input.platform) == "zhihu").then(|| "zhihu".to_string()))
+}
+
 fn normalized_optional(value: &Option<String>) -> Option<String> {
     value
         .as_deref()
@@ -310,8 +341,31 @@ fn capture_hash(input: &SourceCaptureInput) -> Result<String, String> {
             format!("zhihu:text:{}", normalized_source_text(&input.selected_text)).into_bytes()
         }
     } else {
-        serde_json::to_vec(input)
-            .map_err(|error| format!("failed to serialize source for deduplication: {error}"))?
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct LegacyCaptureHashInput<'a> {
+            platform: &'a str,
+            selected_text: &'a str,
+            url: &'a Option<String>,
+            title: &'a Option<String>,
+            author: &'a Option<String>,
+            context_before: &'a Option<String>,
+            context_after: &'a Option<String>,
+            application: &'a Option<String>,
+            window_title: &'a Option<String>,
+        }
+        serde_json::to_vec(&LegacyCaptureHashInput {
+            platform: &input.platform,
+            selected_text: &input.selected_text,
+            url: &input.url,
+            title: &input.title,
+            author: &input.author,
+            context_before: &input.context_before,
+            context_after: &input.context_after,
+            application: &input.application,
+            window_title: &input.window_title,
+        })
+        .map_err(|error| format!("failed to serialize source for deduplication: {error}"))?
     };
     let digest = Sha256::digest(canonical);
     Ok(format!("{digest:x}"))
@@ -393,6 +447,8 @@ fn upgrade_source_to_zhihu(
         .execute(
             "UPDATE sources SET
                 platform = 'zhihu',
+                source_kind = 'web',
+                connector_id = 'zhihu',
                 url = COALESCE(?2, url),
                 title = COALESCE(?3, title),
                 author = COALESCE(?4, author),
@@ -454,7 +510,7 @@ fn load_capture_by_knowledge_id(
 fn capture_query(filter: &str) -> String {
     format!(
         "SELECT
-            s.id, s.platform, s.url, s.title, s.author, s.selected_text,
+            s.id, s.platform, s.source_kind, s.connector_id, s.url, s.title, s.author, s.selected_text,
             s.context_before, s.context_after, s.application, s.window_title,
             s.content_hash, s.captured_at,
             k.id, k.source_id, k.core_claim, k.concepts_json, k.prerequisites_json,
@@ -469,38 +525,40 @@ fn capture_query(filter: &str) -> String {
 }
 
 fn map_capture_row(row: &Row<'_>) -> rusqlite::Result<CaptureKnowledgeResult> {
-    let concepts_json: String = row.get(15)?;
-    let prerequisites_json: String = row.get(16)?;
-    let important_details_json: String = row.get(17)?;
-    let limitations_json: String = row.get(18)?;
+    let concepts_json: String = row.get(17)?;
+    let prerequisites_json: String = row.get(18)?;
+    let important_details_json: String = row.get(19)?;
+    let limitations_json: String = row.get(20)?;
 
     Ok(CaptureKnowledgeResult {
         source: SourceRecord {
             id: row.get(0)?,
             platform: row.get(1)?,
-            url: row.get(2)?,
-            title: row.get(3)?,
-            author: row.get(4)?,
-            selected_text: row.get(5)?,
-            context_before: row.get(6)?,
-            context_after: row.get(7)?,
-            application: row.get(8)?,
-            window_title: row.get(9)?,
-            content_hash: row.get(10)?,
-            captured_at: row.get(11)?,
+            source_kind: row.get(2)?,
+            connector_id: row.get(3)?,
+            url: row.get(4)?,
+            title: row.get(5)?,
+            author: row.get(6)?,
+            selected_text: row.get(7)?,
+            context_before: row.get(8)?,
+            context_after: row.get(9)?,
+            application: row.get(10)?,
+            window_title: row.get(11)?,
+            content_hash: row.get(12)?,
+            captured_at: row.get(13)?,
         },
         knowledge_unit: KnowledgeUnitRecord {
-            id: row.get(12)?,
-            source_id: row.get(13)?,
-            core_claim: row.get(14)?,
+            id: row.get(14)?,
+            source_id: row.get(15)?,
+            core_claim: row.get(16)?,
             concepts: parse_string_array(&concepts_json),
             prerequisites: parse_string_array(&prerequisites_json),
             important_details: parse_string_array(&important_details_json),
             limitations: parse_string_array(&limitations_json),
-            user_note: row.get(19)?,
-            status: row.get(20)?,
-            created_at: row.get(21)?,
-            updated_at: row.get(22)?,
+            user_note: row.get(21)?,
+            status: row.get(22)?,
+            created_at: row.get(23)?,
+            updated_at: row.get(24)?,
         },
         duplicate: false,
     })
@@ -525,6 +583,8 @@ mod tests {
     fn zhihu_identity_ignores_metadata_but_preserves_selection() {
         let first = SourceCaptureInput {
             platform: "zhihu".into(),
+            source_kind: None,
+            connector_id: None,
             selected_text: "一段正文".into(),
             url: Some("https://zhuanlan.zhihu.com/p/269199110?utm_source=test".into()),
             title: Some("标题".into()),
@@ -549,6 +609,8 @@ mod tests {
     fn zhihu_upgrade_requires_canonical_source_url() {
         let mut input = SourceCaptureInput {
             platform: "zhihu".into(),
+            source_kind: None,
+            connector_id: None,
             selected_text: "same quote".into(),
             url: None,
             title: Some("Question".into()),
@@ -567,6 +629,8 @@ mod tests {
     fn empty_selection_is_rejected() {
         let input = SourceCaptureInput {
             platform: "desktop".into(),
+            source_kind: None,
+            connector_id: None,
             selected_text: "   ".into(),
             url: None,
             title: None,

@@ -14,6 +14,8 @@ const SOURCE_PLATFORMS: &[&str] = &["zhihu", "web", "pdf", "desktop", "manual", 
 pub struct SourceLibraryItem {
     pub id: String,
     pub platform: String,
+    pub source_kind: String,
+    pub connector_id: Option<String>,
     pub url: Option<String>,
     pub title: Option<String>,
     pub author: Option<String>,
@@ -70,7 +72,7 @@ fn list_source_library(
     let like = query.map(|value| format!("%{}%", escape_like(value)));
     let mut statement = connection
         .prepare(
-            "SELECT s.id, s.platform, s.url, s.title, s.author, s.selected_text, s.captured_at,
+            "SELECT s.id, s.platform, s.source_kind, s.connector_id, s.url, s.title, s.author, s.selected_text, s.captured_at,
                     COUNT(DISTINCT k.id)
              FROM sources s
              LEFT JOIN knowledge_source_links l ON l.source_id = s.id
@@ -85,7 +87,7 @@ fn list_source_library(
                     OR lower(COALESCE(s.url, '')) LIKE lower(?2) ESCAPE '\\'
                     OR lower(s.selected_text) LIKE lower(?2) ESCAPE '\\'
                )
-             GROUP BY s.id, s.platform, s.url, s.title, s.author, s.selected_text, s.captured_at
+             GROUP BY s.id, s.platform, s.source_kind, s.connector_id, s.url, s.title, s.author, s.selected_text, s.captured_at
              ORDER BY s.captured_at DESC, s.rowid DESC
              LIMIT ?3",
         )
@@ -95,12 +97,14 @@ fn list_source_library(
             Ok(SourceLibraryItem {
                 id: row.get(0)?,
                 platform: row.get(1)?,
-                url: row.get(2)?,
-                title: row.get(3)?,
-                author: row.get(4)?,
-                selected_text: row.get(5)?,
-                captured_at: row.get(6)?,
-                knowledge_count: row.get(7)?,
+                source_kind: row.get(2)?,
+                connector_id: row.get(3)?,
+                url: row.get(4)?,
+                title: row.get(5)?,
+                author: row.get(6)?,
+                selected_text: row.get(7)?,
+                captured_at: row.get(8)?,
+                knowledge_count: row.get(9)?,
             })
         })
         .map_err(|error| format!("failed to query source library: {error}"))?
@@ -115,7 +119,7 @@ fn load_source_detail(
 ) -> Result<SourceDetailRecord, String> {
     let source = connection
         .query_row(
-            "SELECT s.id, s.platform, s.url, s.title, s.author, s.selected_text,
+            "SELECT s.id, s.platform, s.source_kind, s.connector_id, s.url, s.title, s.author, s.selected_text,
                     s.context_before, s.context_after, s.application, s.window_title,
                     s.content_hash, s.captured_at
              FROM sources s
@@ -125,16 +129,18 @@ fn load_source_detail(
                 Ok(SourceRecord {
                     id: row.get(0)?,
                     platform: row.get(1)?,
-                    url: row.get(2)?,
-                    title: row.get(3)?,
-                    author: row.get(4)?,
-                    selected_text: row.get(5)?,
-                    context_before: row.get(6)?,
-                    context_after: row.get(7)?,
-                    application: row.get(8)?,
-                    window_title: row.get(9)?,
-                    content_hash: row.get(10)?,
-                    captured_at: row.get(11)?,
+                    source_kind: row.get(2)?,
+                    connector_id: row.get(3)?,
+                    url: row.get(4)?,
+                    title: row.get(5)?,
+                    author: row.get(6)?,
+                    selected_text: row.get(7)?,
+                    context_before: row.get(8)?,
+                    context_after: row.get(9)?,
+                    application: row.get(10)?,
+                    window_title: row.get(11)?,
+                    content_hash: row.get(12)?,
+                    captured_at: row.get(13)?,
                 })
             },
         )

@@ -750,7 +750,7 @@ fn load_gap_source_items(
 ) -> Result<Vec<SourceLibraryItem>, String> {
     let mut statement = connection
         .prepare(
-            "SELECT s.id, s.platform, s.url, s.title, s.author, s.selected_text, s.captured_at,
+            "SELECT s.id, s.platform, s.source_kind, s.connector_id, s.url, s.title, s.author, s.selected_text, s.captured_at,
                     (SELECT COUNT(DISTINCT l.knowledge_unit_id)
                      FROM knowledge_source_links l
                      JOIN knowledge_units k ON k.id = l.knowledge_unit_id
@@ -768,12 +768,14 @@ fn load_gap_source_items(
             Ok(SourceLibraryItem {
                 id: row.get(0)?,
                 platform: row.get(1)?,
-                url: row.get(2)?,
-                title: row.get(3)?,
-                author: row.get(4)?,
-                selected_text: row.get(5)?,
-                captured_at: row.get(6)?,
-                knowledge_count: row.get(7)?,
+                source_kind: row.get(2)?,
+                connector_id: row.get(3)?,
+                url: row.get(4)?,
+                title: row.get(5)?,
+                author: row.get(6)?,
+                selected_text: row.get(7)?,
+                captured_at: row.get(8)?,
+                knowledge_count: row.get(9)?,
             })
         })
         .map_err(|error| format!("failed to query research gap source details: {error}"))?

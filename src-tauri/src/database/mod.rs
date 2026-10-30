@@ -1120,6 +1120,80 @@ pub(crate) fn apply_migrations(connection: &mut Connection) -> Result<(), String
             .map_err(|error| format!("failed to commit database migration 15: {error}"))?;
     }
 
+    if current < 16 {
+        let transaction = connection
+            .transaction()
+            .map_err(|error| format!("failed to start database migration 16: {error}"))?;
+        let source_kind_exists: i64 = transaction
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('sources') WHERE name = 'source_kind'",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|error| format!("failed to inspect source_kind for migration 16: {error}"))?;
+        if source_kind_exists == 0 {
+            transaction
+                .execute(
+                    "ALTER TABLE sources ADD COLUMN source_kind TEXT NOT NULL DEFAULT 'unknown'",
+                    [],
+                )
+                .map_err(|error| format!("failed to add source_kind in migration 16: {error}"))?;
+        }
+        let connector_id_exists: i64 = transaction
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('sources') WHERE name = 'connector_id'",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|error| format!("failed to inspect connector_id for migration 16: {error}"))?;
+        if connector_id_exists == 0 {
+            transaction
+                .execute("ALTER TABLE sources ADD COLUMN connector_id TEXT", [])
+                .map_err(|error| format!("failed to add connector_id in migration 16: {error}"))?;
+        }
+        let platform_exists: i64 = transaction
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('sources') WHERE name = 'platform'",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|error| format!("failed to inspect platform for migration 16: {error}"))?;
+        if platform_exists != 0 {
+            transaction
+                .execute_batch(
+                    r#"
+                    UPDATE sources
+                    SET source_kind = CASE lower(trim(platform))
+                        WHEN 'zhihu' THEN 'web'
+                        WHEN 'web' THEN 'web'
+                        WHEN 'pdf' THEN 'document'
+                        WHEN 'desktop' THEN 'desktop'
+                        WHEN 'manual' THEN 'manual'
+                        ELSE 'unknown'
+                    END;
+
+                    UPDATE sources
+                    SET connector_id = 'zhihu'
+                    WHERE lower(trim(platform)) = 'zhihu'
+                      AND (connector_id IS NULL OR trim(connector_id) = '');
+
+                    CREATE INDEX IF NOT EXISTS idx_sources_kind_connector
+                        ON sources(source_kind, connector_id, captured_at DESC);
+                    "#,
+                )
+                .map_err(|error| format!("failed to backfill source metadata in migration 16: {error}"))?;
+        }
+        transaction
+            .execute(
+                "INSERT INTO schema_migrations(version, applied_at) VALUES (16, unixepoch() * 1000)",
+                [],
+            )
+            .map_err(|error| format!("failed to record database migration 16: {error}"))?;
+        transaction
+            .commit()
+            .map_err(|error| format!("failed to commit database migration 16: {error}"))?;
+    }
+
     Ok(())
 }
 
@@ -1373,7 +1447,7 @@ mod tests {
         assert_eq!(last_result, None);
         assert_eq!(scheduler_version, 1);
         assert_eq!(scheduler_events_table, 1);
-        assert_eq!(version, 15);
+        assert_eq!(version, 16);
     }
 
     #[test]
@@ -1432,7 +1506,7 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(version, 15);
+        assert_eq!(version, 16);
         assert_eq!(inbox_table, 1);
         assert_eq!(draft_table, 1);
         assert_eq!(backfilled, ("s-captured".into(), "k-captured".into(), "captured".into()));
@@ -1484,7 +1558,7 @@ mod tests {
             .query_row("SELECT status FROM research_gaps WHERE id = 'rg1'", [], |row| row.get(0))
             .unwrap();
 
-        assert_eq!(version, 15);
+        assert_eq!(version, 16);
         assert_eq!(tables, 3);
         assert_eq!(gap_status, "open");
     }
@@ -1497,7 +1571,7 @@ mod tests {
         connection
             .execute_batch(
                 "DROP INDEX idx_drafts_accepted_knowledge;
-                 DELETE FROM schema_migrations WHERE version = 15;"
+                 DELETE FROM schema_migrations WHERE version >= 15;"
             )
             .unwrap();
         connection
@@ -1553,8 +1627,63 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(version, 15);
+        assert_eq!(version, 16);
         assert_eq!(column_count, 1);
+    }
+
+    #[test]
+    fn migration_sixteen_backfills_source_kind_and_connector() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL);
+                 CREATE TABLE sources(
+                    id TEXT PRIMARY KEY,
+                    platform TEXT NOT NULL,
+                    selected_text TEXT NOT NULL,
+                    content_hash TEXT NOT NULL,
+                    captured_at INTEGER NOT NULL
+                 );
+                 INSERT INTO schema_migrations(version, applied_at) VALUES (15, 0);
+                 INSERT INTO sources(id, platform, selected_text, content_hash, captured_at) VALUES
+                    ('zh', 'zhihu', 'answer', 'h1', 1),
+                    ('web', 'web', 'article', 'h2', 2),
+                    ('pdf', 'pdf', 'paper', 'h3', 3),
+                    ('manual', 'manual', 'note', 'h4', 4);"
+            )
+            .unwrap();
+
+        apply_migrations(&mut connection).unwrap();
+
+        let zhihu: (String, Option<String>) = connection
+            .query_row(
+                "SELECT source_kind, connector_id FROM sources WHERE id = 'zh'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        let web: (String, Option<String>) = connection
+            .query_row(
+                "SELECT source_kind, connector_id FROM sources WHERE id = 'web'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        let pdf_kind: String = connection
+            .query_row("SELECT source_kind FROM sources WHERE id = 'pdf'", [], |row| row.get(0))
+            .unwrap();
+        let manual_kind: String = connection
+            .query_row("SELECT source_kind FROM sources WHERE id = 'manual'", [], |row| row.get(0))
+            .unwrap();
+        let version: i64 = connection
+            .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| row.get(0))
+            .unwrap();
+
+        assert_eq!(zhihu, ("web".into(), Some("zhihu".into())));
+        assert_eq!(web, ("web".into(), None));
+        assert_eq!(pdf_kind, "document");
+        assert_eq!(manual_kind, "manual");
+        assert_eq!(version, 16);
     }
 
     #[test]
@@ -1659,7 +1788,7 @@ mod tests {
         assert_eq!(reviewed_status, "weak");
         assert!(fresh_next.is_some());
         assert!(captured_next.is_none());
-        assert_eq!(version, 15);
+        assert_eq!(version, 16);
 
         let inbox_rows: i64 = connection
             .query_row("SELECT COUNT(*) FROM inbox_items", [], |row| row.get(0))

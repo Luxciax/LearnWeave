@@ -1,7 +1,7 @@
 import { listen } from '@tauri-apps/api/event'
 import { LoaderCircle, Plus, Search, Settings2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
-import { isZhihuAccessSecretConfigured } from '../../services/zhihu-service'
+import { SEARCH_CONNECTORS, zhihuConnector } from '../../connectors/search-connectors'
 import { ZhihuSearchView } from './ZhihuSearchView'
 
 interface DiscoverViewProps {
@@ -19,14 +19,17 @@ export function DiscoverView({
   onOpenCapture,
   onOpenSettings
 }: DiscoverViewProps) {
-  const [configured, setConfigured] = useState<boolean | null>(null)
+  const [configuredConnectorIds, setConfiguredConnectorIds] = useState<string[] | null>(null)
 
   const refreshSources = useCallback(async () => {
-    try {
-      setConfigured(await isZhihuAccessSecretConfigured())
-    } catch {
-      setConfigured(false)
-    }
+    const checks = await Promise.all(SEARCH_CONNECTORS.map(async (connector) => {
+      try {
+        return await connector.isConfigured() ? connector.id : null
+      } catch {
+        return null
+      }
+    }))
+    setConfiguredConnectorIds(checks.filter((id): id is string => Boolean(id)))
   }, [])
 
   useEffect(() => {
@@ -45,7 +48,7 @@ export function DiscoverView({
     }
   }, [refreshSources])
 
-  if (configured === null) {
+  if (configuredConnectorIds === null) {
     return (
       <section className="discover-empty" aria-label="发现">
         <LoaderCircle size={18} strokeWidth={1.8} className="spin" />
@@ -54,13 +57,13 @@ export function DiscoverView({
     )
   }
 
-  if (!configured) {
+  if (configuredConnectorIds.length === 0) {
     return (
       <section className="discover-empty" aria-label="发现">
         <Search size={22} strokeWidth={1.6} />
         <div>
           <h1>还没有可搜索的来源</h1>
-          <p>发现页只负责从外部来源找内容。现在可以配置知乎搜索，或者直接捕获已有的文本和网页。</p>
+          <p>发现页只负责从外部来源找内容。现在可以配置搜索来源，或者直接捕获已有的文本和网页。</p>
         </div>
         <div className="discover-empty-actions">
           <button type="button" className="primary" onClick={onOpenCapture}>
@@ -74,12 +77,24 @@ export function DiscoverView({
     )
   }
 
+  if (configuredConnectorIds.includes(zhihuConnector.id)) {
+    return (
+      <ZhihuSearchView
+        initialQuery={initialQuery}
+        onBack={onBack}
+        onCaptured={onCaptured}
+        onOpenSettings={onOpenSettings}
+      />
+    )
+  }
+
   return (
-    <ZhihuSearchView
-      initialQuery={initialQuery}
-      onBack={onBack}
-      onCaptured={onCaptured}
-      onOpenSettings={onOpenSettings}
-    />
+    <section className="discover-empty" aria-label="发现">
+      <Search size={22} strokeWidth={1.6} />
+      <div>
+        <h1>搜索来源已连接</h1>
+        <p>当前版本还没有这个 Connector 的结果视图。</p>
+      </div>
+    </section>
   )
 }
