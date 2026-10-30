@@ -21,6 +21,7 @@ import type {
   KnowledgeStatus,
   SourceCaptureInput,
   SourceDetailRecord,
+  SourceKind,
   SourceLibraryItem,
   SourcePlatform,
   ResearchGapRecord,
@@ -309,8 +310,22 @@ export function getKnowledgeDetail(knowledgeUnitId: string) {
   return invoke<KnowledgeDetail>('knowledge_get_detail', { knowledgeUnitId })
 }
 
-export function listSources(query?: string, platform?: SourcePlatform, limit = 100) {
-  return invoke<SourceLibraryItem[]>('source_library_list', { query, platform, limit })
+export interface SourceListFilters {
+  query?: string
+  sourceKind?: SourceKind
+  connectorId?: string
+  platform?: SourcePlatform
+  limit?: number
+}
+
+export function listSources(filters: SourceListFilters = {}) {
+  return invoke<SourceLibraryItem[]>('source_library_list', {
+    query: filters.query,
+    sourceKind: filters.sourceKind,
+    connectorId: filters.connectorId,
+    platform: filters.platform,
+    limit: filters.limit ?? 100
+  })
 }
 
 export function getSourceDetail(sourceId: string) {

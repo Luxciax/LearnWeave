@@ -8,6 +8,7 @@ use super::internalization::SourceKnowledgeUnitSummary;
 use super::SourceRecord;
 
 const SOURCE_PLATFORMS: &[&str] = &["zhihu", "web", "pdf", "desktop", "manual", "unknown"];
+const SOURCE_KINDS: &[&str] = &["web", "desktop", "document", "manual", "unknown"];
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,18 +37,37 @@ pub fn source_library_list(
     state: State<'_, DatabaseState>,
     query: Option<String>,
     platform: Option<String>,
+    source_kind: Option<String>,
+    connector_id: Option<String>,
     limit: Option<u32>,
 ) -> Result<Vec<SourceLibraryItem>, String> {
     let query = clean_optional(query);
-    let platform = clean_optional(platform);
+    let platform = clean_optional(platform).map(|value| value.to_ascii_lowercase());
+    let source_kind = clean_optional(source_kind).map(|value| value.to_ascii_lowercase());
+    let connector_id = clean_optional(connector_id).map(|value| value.to_ascii_lowercase());
     if let Some(value) = platform.as_deref() {
         if !SOURCE_PLATFORMS.contains(&value) {
             return Err("unsupported source platform".into());
         }
     }
+    if let Some(value) = source_kind.as_deref() {
+        if !SOURCE_KINDS.contains(&value) {
+            return Err("unsupported source kind".into());
+        }
+    }
+    if connector_id.as_ref().is_some_and(|value| value.chars().count() > 80) {
+        return Err("source connector id is too long".into());
+    }
     let limit = limit.unwrap_or(100).clamp(1, 200) as i64;
     state.with_connection(|connection| {
-        list_source_library(connection, query.as_deref(), platform.as_deref(), limit)
+        list_source_library(
+            connection,
+            query.as_deref(),
+            platform.as_deref(),
+            source_kind.as_deref(),
+            connector_id.as_deref(),
+            limit,
+        )
     })
 }
 
@@ -67,6 +87,8 @@ fn list_source_library(
     connection: &rusqlite::Connection,
     query: Option<&str>,
     platform: Option<&str>,
+    source_kind: Option<&str>,
+    connector_id: Option<&str>,
     limit: i64,
 ) -> Result<Vec<SourceLibraryItem>, String> {
     let like = query.map(|value| format!("%{}%", escape_like(value)));
@@ -80,20 +102,22 @@ fn list_source_library(
                 AND k.deleted_at IS NULL
                 AND k.status <> 'captured'
              WHERE (?1 IS NULL OR s.platform = ?1)
+               AND (?2 IS NULL OR s.source_kind = ?2)
+               AND (?3 IS NULL OR s.connector_id = ?3)
                AND (
-                    ?2 IS NULL
-                    OR lower(COALESCE(s.title, '')) LIKE lower(?2) ESCAPE '\\'
-                    OR lower(COALESCE(s.author, '')) LIKE lower(?2) ESCAPE '\\'
-                    OR lower(COALESCE(s.url, '')) LIKE lower(?2) ESCAPE '\\'
-                    OR lower(s.selected_text) LIKE lower(?2) ESCAPE '\\'
+                    ?4 IS NULL
+                    OR lower(COALESCE(s.title, '')) LIKE lower(?4) ESCAPE '\\'
+                    OR lower(COALESCE(s.author, '')) LIKE lower(?4) ESCAPE '\\'
+                    OR lower(COALESCE(s.url, '')) LIKE lower(?4) ESCAPE '\\'
+                    OR lower(s.selected_text) LIKE lower(?4) ESCAPE '\\'
                )
              GROUP BY s.id, s.platform, s.source_kind, s.connector_id, s.url, s.title, s.author, s.selected_text, s.captured_at
              ORDER BY s.captured_at DESC, s.rowid DESC
-             LIMIT ?3",
+             LIMIT ?5",
         )
         .map_err(|error| format!("failed to prepare source library query: {error}"))?;
     let rows = statement
-        .query_map(params![platform, like, limit], |row| {
+        .query_map(params![platform, source_kind, connector_id, like, limit], |row| {
             Ok(SourceLibraryItem {
                 id: row.get(0)?,
                 platform: row.get(1)?,
@@ -243,7 +267,7 @@ mod tests {
             )
             .unwrap();
 
-        let items = list_source_library(&connection, Some("Author"), Some("zhihu"), 20).unwrap();
+        let items = list_source_library(&connection, Some("Author"), Some("zhihu"), None, None, 20).unwrap();
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].id, "s1");
         assert_eq!(items[0].knowledge_count, 2);
@@ -274,7 +298,7 @@ mod tests {
             )
             .unwrap();
 
-        let items = list_source_library(&connection, Some("Supporting"), Some("zhihu"), 20).unwrap();
+        let items = list_source_library(&connection, Some("Supporting"), Some("zhihu"), None, None, 20).unwrap();
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].id, "s-support");
         assert_eq!(items[0].knowledge_count, 1);
@@ -304,7 +328,30 @@ mod tests {
             )
             .unwrap();
 
-        let items = list_source_library(&connection, Some("50%_done"), None, 20).unwrap();
+        let items = list_source_library(&connection, Some("50%_done"), None, None, None, 20).unwrap();
         assert_eq!(items.len(), 1);
+    }
+
+    #[test]
+    fn source_library_filters_by_kind_and_connector() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        apply_migrations(&mut connection).unwrap();
+        connection
+            .execute_batch(
+                "INSERT INTO sources(id, platform, source_kind, connector_id, title, selected_text, content_hash, captured_at) VALUES
+                    ('zh', 'zhihu', 'web', 'zhihu', 'Zhihu answer', 'answer', 'source-filter-zh', 10),
+                    ('url', 'web', 'web', 'web-url', 'Web article', 'article', 'source-filter-url', 20),
+                    ('manual', 'manual', 'manual', NULL, 'Manual note', 'note', 'source-filter-manual', 30);"
+            )
+            .unwrap();
+
+        let web = list_source_library(&connection, None, None, Some("web"), None, 20).unwrap();
+        assert_eq!(web.len(), 2);
+        let zhihu = list_source_library(&connection, None, None, Some("web"), Some("zhihu"), 20).unwrap();
+        assert_eq!(zhihu.len(), 1);
+        assert_eq!(zhihu[0].id, "zh");
+        let manual = list_source_library(&connection, None, None, Some("manual"), None, 20).unwrap();
+        assert_eq!(manual.len(), 1);
+        assert_eq!(manual[0].id, "manual");
     }
 }
