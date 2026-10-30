@@ -12,10 +12,20 @@ pub struct DatabaseState {
 
 impl DatabaseState {
     pub fn initialize(app: &AppHandle) -> Result<Self, String> {
-        let root = app
+        let new_root = app
             .path()
             .app_data_dir()
             .map_err(|error| format!("failed to resolve app data directory: {error}"))?;
+        let legacy_root = std::env::var_os("APPDATA")
+            .map(PathBuf::from)
+            .map(|root| root.join("com.zhiforge.app"));
+        let root = if new_root.join("knowledge.db").exists() {
+            new_root
+        } else if legacy_root.as_ref().is_some_and(|root| root.join("knowledge.db").exists()) {
+            legacy_root.expect("legacy app data root was checked")
+        } else {
+            new_root
+        };
         fs::create_dir_all(&root)
             .map_err(|error| format!("failed to create app data directory: {error}"))?;
 
@@ -1194,6 +1204,37 @@ pub(crate) fn apply_migrations(connection: &mut Connection) -> Result<(), String
             .map_err(|error| format!("failed to commit database migration 16: {error}"))?;
     }
 
+    if current < 17 {
+        let transaction = connection
+            .transaction()
+            .map_err(|error| format!("failed to start database migration 17: {error}"))?;
+        transaction
+            .execute_batch(
+                "CREATE TABLE IF NOT EXISTS ai_usage (
+                    id TEXT PRIMARY KEY,
+                    task TEXT NOT NULL,
+                    provider_id TEXT NOT NULL,
+                    model TEXT NOT NULL,
+                    input_tokens INTEGER NOT NULL DEFAULT 0,
+                    output_tokens INTEGER NOT NULL DEFAULT 0,
+                    cached_tokens INTEGER NOT NULL DEFAULT 0,
+                    created_at INTEGER NOT NULL
+                 );
+                 CREATE INDEX IF NOT EXISTS idx_ai_usage_created_at ON ai_usage(created_at DESC);
+                 CREATE INDEX IF NOT EXISTS idx_ai_usage_task ON ai_usage(task, created_at DESC);"
+            )
+            .map_err(|error| format!("failed to apply database migration 17: {error}"))?;
+        transaction
+            .execute(
+                "INSERT INTO schema_migrations(version, applied_at) VALUES (17, unixepoch() * 1000)",
+                [],
+            )
+            .map_err(|error| format!("failed to record database migration 17: {error}"))?;
+        transaction
+            .commit()
+            .map_err(|error| format!("failed to commit database migration 17: {error}"))?;
+    }
+
     Ok(())
 }
 
@@ -1447,7 +1488,7 @@ mod tests {
         assert_eq!(last_result, None);
         assert_eq!(scheduler_version, 1);
         assert_eq!(scheduler_events_table, 1);
-        assert_eq!(version, 16);
+        assert_eq!(version, 17);
     }
 
     #[test]
@@ -1506,7 +1547,7 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(version, 16);
+        assert_eq!(version, 17);
         assert_eq!(inbox_table, 1);
         assert_eq!(draft_table, 1);
         assert_eq!(backfilled, ("s-captured".into(), "k-captured".into(), "captured".into()));
@@ -1558,7 +1599,7 @@ mod tests {
             .query_row("SELECT status FROM research_gaps WHERE id = 'rg1'", [], |row| row.get(0))
             .unwrap();
 
-        assert_eq!(version, 16);
+        assert_eq!(version, 17);
         assert_eq!(tables, 3);
         assert_eq!(gap_status, "open");
     }
@@ -1627,7 +1668,7 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(version, 16);
+        assert_eq!(version, 17);
         assert_eq!(column_count, 1);
     }
 
@@ -1683,7 +1724,7 @@ mod tests {
         assert_eq!(web, ("web".into(), None));
         assert_eq!(pdf_kind, "document");
         assert_eq!(manual_kind, "manual");
-        assert_eq!(version, 16);
+        assert_eq!(version, 17);
     }
 
     #[test]
@@ -1788,7 +1829,7 @@ mod tests {
         assert_eq!(reviewed_status, "weak");
         assert!(fresh_next.is_some());
         assert!(captured_next.is_none());
-        assert_eq!(version, 16);
+        assert_eq!(version, 17);
 
         let inbox_rows: i64 = connection
             .query_row("SELECT COUNT(*) FROM inbox_items", [], |row| row.get(0))

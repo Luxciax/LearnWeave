@@ -2,7 +2,7 @@
   'use strict'
 
   const BASE_URL = 'http://127.0.0.1:17832'
-  const CLIENT_HEADER = { 'X-ZhiForge-Client': 'browser-helper' }
+  const CLIENT_HEADER = { 'X-LearnWeave-Client': 'browser-helper' }
   let token = null
 
   async function pair() {
@@ -12,11 +12,11 @@
       cache: 'no-store'
     })
     if (!response.ok) {
-      throw new Error(`ZhiForge pair failed: HTTP ${response.status}`)
+      throw new Error(`LearnWeave pair failed: HTTP ${response.status}`)
     }
     const payload = await response.json()
     if (!payload?.success || typeof payload.token !== 'string' || !payload.token) {
-      throw new Error('ZhiForge pair returned an invalid token')
+      throw new Error('LearnWeave pair returned an invalid token')
     }
     token = payload.token
     return token
@@ -40,16 +40,16 @@
       return postCapture(payload, false)
     }
     if (!response.ok) {
-      throw new Error(`ZhiForge capture bridge failed: HTTP ${response.status}`)
+      throw new Error(`LearnWeave capture bridge failed: HTTP ${response.status}`)
     }
     const result = await response.json()
     if (!result?.success) {
-      throw new Error('ZhiForge capture bridge rejected the context')
+      throw new Error('LearnWeave capture bridge rejected the context')
     }
     return result
   }
 
-  globalThis.ZhiForgeDesktopBridge = Object.freeze({
+  globalThis.LearnWeaveDesktopBridge = Object.freeze({
     sendCapture: postCapture
   })
 })()

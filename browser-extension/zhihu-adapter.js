@@ -140,7 +140,7 @@
     }
   }
 
-  globalThis.ZhiForgeZhihuAdapter = Object.freeze({
+  globalThis.LearnWeaveZhihuAdapter = Object.freeze({
     captureSelection
   })
 })()

@@ -1,10 +1,15 @@
 use keyring::{Entry, Error};
 
-const SERVICE: &str = "ZhiForge";
+const SERVICE: &str = "LearnWeave";
+const LEGACY_SERVICE: &str = "ZhiForge";
 const LEGACY_ACCOUNT: &str = "default-provider-api-key";
 
+fn entry_for(service: &str, account: &str) -> Result<Entry, String> {
+    Entry::new(service, account).map_err(|error| format!("credential store unavailable: {error}"))
+}
+
 fn entry(account: &str) -> Result<Entry, String> {
-    Entry::new(SERVICE, account).map_err(|error| format!("credential store unavailable: {error}"))
+    entry_for(SERVICE, account)
 }
 
 fn provider_account(credential_id: &str) -> Result<String, String> {
@@ -20,8 +25,12 @@ fn provider_account(credential_id: &str) -> Result<String, String> {
 
 fn load_account(account: &str) -> Result<String, String> {
     match entry(account)?.get_password() {
-        Ok(password) => Ok(password),
-        Err(Error::NoEntry) => Ok(String::new()),
+        Ok(password) if !password.is_empty() => Ok(password),
+        Ok(_) | Err(Error::NoEntry) => match entry_for(LEGACY_SERVICE, account)?.get_password() {
+            Ok(password) => Ok(password),
+            Err(Error::NoEntry) => Ok(String::new()),
+            Err(error) => Err(format!("failed to read legacy API key from credential store: {error}")),
+        },
         Err(error) => Err(format!("failed to read API key from credential store: {error}")),
     }
 }
@@ -89,7 +98,7 @@ mod tests {
     #[ignore = "touches Windows Credential Manager with a temporary self-test credential"]
     fn windows_native_credential_round_trip() {
         let credential_id = format!("self-test-{}", std::process::id());
-        let expected = "zhiforge-keyring-self-test";
+        let expected = "learnweave-keyring-self-test";
         let save_result = save_provider(&credential_id, expected);
         let loaded_result = load_provider(&credential_id);
         let cleanup_result = save_provider(&credential_id, "");

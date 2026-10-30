@@ -1,11 +1,13 @@
 import type { ComponentType } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { AppWindow, DatabaseBackup, MousePointer2, Route, Search, ServerCog, Settings2 } from 'lucide-react'
+import { AppWindow, BrainCircuit, DatabaseBackup, PlugZap, MousePointer2, Route, Search, ServerCog, Settings2 } from 'lucide-react'
 import type { AppConfig } from '../domain/settings'
 import type { AiSettings } from '../types'
 import { ActionRoutesSettings } from '../windows/result/ActionRoutesSettings'
 import { AppRulesSettings } from '../windows/result/AppRulesSettings'
 import { GeneralSettings } from '../windows/result/GeneralSettings'
+import { KnowledgeAiSettings } from '../windows/result/KnowledgeAiSettings'
+import { ConnectorSettings } from '../windows/result/ConnectorSettings'
 import { ProviderProfilesSettings } from '../windows/result/ProviderProfilesSettings'
 import { SafetySettings } from '../windows/result/SafetySettings'
 import { TriggerSettings } from '../windows/result/TriggerSettings'
@@ -54,6 +56,14 @@ function ActionsPage({ config, onConfigChange }: SettingsPageProps) {
   return <ActionRoutesSettings config={config} onConfigChange={onConfigChange} />
 }
 
+function KnowledgeAiPage({ config, onConfigChange }: SettingsPageProps) {
+  return <KnowledgeAiSettings config={config} onConfigChange={onConfigChange} />
+}
+
+function ConnectorsPage({ config, onConfigChange }: SettingsPageProps) {
+  return <ConnectorSettings config={config} onConfigChange={onConfigChange} />
+}
+
 function ZhihuPage(_props: SettingsPageProps) {
   return <ZhihuSettings />
 }
@@ -91,6 +101,22 @@ settingsPageRegistry.register({
   icon: Route,
   order: 20,
   component: ActionsPage
+})
+settingsPageRegistry.register({
+  id: 'knowledge-ai',
+  title: '学习 AI',
+  description: '提炼、出题、判分、复习规划与研究的独立模型路由和用量',
+  icon: BrainCircuit,
+  order: 22,
+  component: KnowledgeAiPage
+})
+settingsPageRegistry.register({
+  id: 'connectors',
+  title: '来源连接器',
+  description: '付费搜索 API Key、自定义 HTTP/JSON 来源与发现来源管理',
+  icon: PlugZap,
+  order: 24,
+  component: ConnectorsPage
 })
 settingsPageRegistry.register({
   id: 'zhihu',

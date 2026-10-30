@@ -1,16 +1,47 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use crate::domain::{
     action::{builtin_actions, ActionDefinition},
     app_rule::AppRule,
     provider::ProviderProfile,
-    route::ActionRoute,
+    route::{ActionRoute, TaskRoute},
     settings::UiPreferences,
     trigger::TriggerProfile,
 };
 
-pub const CURRENT_SCHEMA_VERSION: u32 = 2;
+pub const CURRENT_SCHEMA_VERSION: u32 = 3;
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ContentConnectorProfile {
+    pub id: String,
+    pub name: String,
+    pub endpoint: String,
+    #[serde(default = "default_query_param")]
+    pub query_param: String,
+    #[serde(default = "default_items_path")]
+    pub items_path: String,
+    #[serde(default = "default_title_path")]
+    pub title_path: String,
+    #[serde(default = "default_url_path")]
+    pub url_path: String,
+    #[serde(default = "default_snippet_path")]
+    pub snippet_path: String,
+    #[serde(default = "default_content_path")]
+    pub content_path: String,
+    #[serde(default)]
+    pub api_key_header: Option<String>,
+    #[serde(default)]
+    pub enabled: bool,
+}
+
+fn default_query_param() -> String { "q".into() }
+fn default_items_path() -> String { "results".into() }
+fn default_title_path() -> String { "title".into() }
+fn default_url_path() -> String { "url".into() }
+fn default_snippet_path() -> String { "snippet".into() }
+fn default_content_path() -> String { "content".into() }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -22,6 +53,10 @@ pub struct AppConfig {
     pub actions: Vec<ActionDefinition>,
     #[serde(default)]
     pub routes: Vec<ActionRoute>,
+    #[serde(default)]
+    pub task_routes: BTreeMap<String, TaskRoute>,
+    #[serde(default)]
+    pub connectors: Vec<ContentConnectorProfile>,
     #[serde(default)]
     pub trigger: TriggerProfile,
     #[serde(default)]
@@ -37,6 +72,8 @@ impl Default for AppConfig {
             providers: Vec::new(),
             actions: builtin_actions(),
             routes: Vec::new(),
+            task_routes: BTreeMap::new(),
+            connectors: Vec::new(),
             trigger: TriggerProfile::default(),
             app_rules: Vec::new(),
             ui: UiPreferences::default(),
@@ -84,6 +121,30 @@ impl AppConfig {
             }
         }
 
+        let mut connector_ids = HashSet::new();
+        for connector in &self.connectors {
+            if connector.id.trim().is_empty()
+                || connector.id.len() > 80
+                || !connector.id.chars().all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))
+            {
+                return Err(format!("connector '{}' has an invalid id", connector.id));
+            }
+            if !connector_ids.insert(connector.id.as_str()) {
+                return Err(format!("duplicate connector id '{}'", connector.id));
+            }
+            if connector.name.trim().is_empty() || connector.name.chars().count() > 80 {
+                return Err(format!("connector '{}' has an invalid name", connector.id));
+            }
+            let url = reqwest::Url::parse(connector.endpoint.trim())
+                .map_err(|_| format!("connector '{}' has an invalid endpoint", connector.id))?;
+            if !matches!(url.scheme(), "http" | "https") {
+                return Err(format!("connector '{}' endpoint must use http or https", connector.id));
+            }
+            if connector.query_param.trim().is_empty() {
+                return Err(format!("connector '{}' has an empty query parameter", connector.id));
+            }
+        }
+
         let mut action_ids = HashSet::new();
         for action in &self.actions {
             if action.id.trim().is_empty() {
@@ -127,6 +188,22 @@ impl AppConfig {
             if !action_ids.insert(action.id.as_str()) {
                 return Err(format!("duplicate action id '{}'", action.id));
             }
+        }
+
+        for (task, route) in &self.task_routes {
+            if task.trim().is_empty()
+                || task.len() > 128
+                || !task.chars().all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))
+            {
+                return Err(format!("invalid AI task route id '{task}'"));
+            }
+            validate_model_ref(task, &route.primary.provider_id, &route.primary.model, &provider_ids)?;
+            for fallback in &route.fallbacks {
+                validate_model_ref(task, &fallback.provider_id, &fallback.model, &provider_ids)?;
+            }
+            route.options
+                .validate()
+                .map_err(|error| format!("AI task route '{task}' has invalid options: {error}"))?;
         }
 
         let mut route_ids = HashSet::new();

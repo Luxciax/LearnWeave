@@ -1,14 +1,14 @@
 [package]
-name = "zhiforge"
+name = "learnweave"
 version = "1.4.0"
 description = "Local-first desktop knowledge internalization assistant"
-authors = ["ZhiForge contributors"]
+authors = ["LearnWeave contributors"]
 license = "PolyForm-Noncommercial-1.0.0"
-repository = "https://github.com/Luxciax/ZhiForge"
+repository = "https://github.com/Luxciax/LearnWeave"
 edition = "2021"
 
 [lib]
-name = "zhiforge_lib"
+name = "learnweave_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

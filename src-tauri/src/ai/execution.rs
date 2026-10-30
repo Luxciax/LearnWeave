@@ -30,6 +30,7 @@ pub struct ExecutionTarget {
     pub credential_id: String,
     pub model: String,
     pub options: GenerationOptions,
+    pub structured_json: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -38,6 +39,12 @@ pub struct ExecutionPlan {
     pub target_language: String,
     pub alternate_language: String,
     pub targets: Vec<ExecutionTarget>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ExecutionResult {
+    pub target: ExecutionTarget,
+    pub usage: provider::Usage,
 }
 
 pub fn resolve_plan(config: &AppConfig, action_id: &str) -> Result<ExecutionPlan, String> {
@@ -110,6 +117,28 @@ pub fn resolve_plan(config: &AppConfig, action_id: &str) -> Result<ExecutionPlan
     })
 }
 
+pub fn resolve_task_targets(config: &AppConfig, task: &str) -> Result<Vec<ExecutionTarget>, String> {
+    if let Some(route) = config.task_routes.get(task.trim()) {
+        let mut targets = Vec::new();
+        let mut seen = HashSet::<(String, String)>::new();
+        push_model_ref(config, &route.primary, &route.options, &mut targets, &mut seen)?;
+        for fallback in &route.fallbacks {
+            push_model_ref(config, fallback, &route.options, &mut targets, &mut seen)?;
+        }
+        if !targets.is_empty() {
+            for target in &mut targets {
+                target.structured_json = true;
+            }
+            return Ok(targets);
+        }
+    }
+    let mut targets = resolve_plan(config, "internalize")?.targets;
+    for target in &mut targets {
+        target.structured_json = true;
+    }
+    Ok(targets)
+}
+
 pub fn hydrate_provider(target: &ExecutionTarget) -> Result<ProviderConfig, String> {
     Ok(ProviderConfig {
         adapter: target.adapter,
@@ -125,18 +154,36 @@ pub async fn execute_plan<H, S, C>(
     plan: ExecutionPlan,
     prompt: &Prompt,
     hydrate: H,
-    mut on_start: S,
-    mut on_chunk: C,
+    on_start: S,
+    on_chunk: C,
 ) -> Result<(), AiRuntimeError>
 where
     H: Fn(&ExecutionTarget) -> Result<ProviderConfig, String>,
     S: FnMut(&ExecutionTarget, usize),
     C: FnMut(String) + Send,
 {
-    let target_count = plan.targets.len();
+    execute_targets(client, plan.targets, prompt, hydrate, on_start, on_chunk)
+        .await
+        .map(|_| ())
+}
+
+pub async fn execute_targets<H, S, C>(
+    client: &Client,
+    targets: Vec<ExecutionTarget>,
+    prompt: &Prompt,
+    hydrate: H,
+    mut on_start: S,
+    mut on_chunk: C,
+) -> Result<ExecutionResult, AiRuntimeError>
+where
+    H: Fn(&ExecutionTarget) -> Result<ProviderConfig, String>,
+    S: FnMut(&ExecutionTarget, usize),
+    C: FnMut(String) + Send,
+{
+    let target_count = targets.len();
     let mut failures = Vec::<AiRuntimeError>::new();
 
-    for (index, target) in plan.targets.into_iter().enumerate() {
+    for (index, target) in targets.into_iter().enumerate() {
         let runtime_provider = match hydrate(&target) {
             Ok(provider) => provider,
             Err(error) => {
@@ -156,6 +203,7 @@ where
             &runtime_provider,
             prompt,
             &target.options,
+            target.structured_json,
             |chunk| {
             emitted = true;
                 on_chunk(chunk);
@@ -164,7 +212,7 @@ where
         .await;
 
         match result {
-            Ok(()) => return Ok(()),
+            Ok(usage) => return Ok(ExecutionResult { target, usage }),
             Err(error) if emitted => return Err(error),
             Err(error) => {
                 let mut routed_error = error;
@@ -228,6 +276,7 @@ fn push_target(
             .unwrap_or_else(|| profile.id.clone()),
         model: model.to_string(),
         options: profile.defaults.overlay(route_options),
+        structured_json: false,
     });
     Ok(())
 }
@@ -254,7 +303,7 @@ fn adapter_from_id(adapter_id: &str) -> Result<ProviderAdapter, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{provider::ProviderProfile, route::ActionRoute};
+    use crate::domain::{provider::ProviderProfile, route::{ActionRoute, TaskRoute}};
     use std::{
         io::{Read, Write},
         net::TcpListener,
@@ -298,6 +347,45 @@ mod tests {
         assert_eq!(plan.targets[0].model, "p-model");
         assert_eq!(plan.targets[1].provider_id, "backup");
         assert_eq!(plan.targets[1].model, "b-model");
+    }
+
+    #[test]
+    fn task_route_uses_task_specific_models_and_native_json() {
+        let mut config = AppConfig {
+            providers: vec![provider("primary", "p-default", true), provider("backup", "b-default", true)],
+            ..Default::default()
+        };
+        config.task_routes.insert("question_generation".into(), TaskRoute {
+            primary: ModelRef { provider_id: "primary".into(), model: "question-model".into() },
+            fallbacks: vec![ModelRef { provider_id: "backup".into(), model: "question-backup".into() }],
+            options: Default::default(),
+        });
+
+        let targets = resolve_task_targets(&config, "question_generation").unwrap();
+        assert_eq!(targets.len(), 2);
+        assert_eq!(targets[0].model, "question-model");
+        assert_eq!(targets[1].model, "question-backup");
+        assert!(targets.iter().all(|target| target.structured_json));
+    }
+
+    #[test]
+    fn missing_task_route_falls_back_to_internalize_route() {
+        let mut config = AppConfig {
+            providers: vec![provider("primary", "default", true)],
+            ..Default::default()
+        };
+        config.routes.push(ActionRoute {
+            id: "internalize-route".into(),
+            action_id: "internalize".into(),
+            primary: ModelRef { provider_id: "primary".into(), model: "internalize-model".into() },
+            fallbacks: Vec::new(),
+            options: Default::default(),
+        });
+
+        let targets = resolve_task_targets(&config, "assessment").unwrap();
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].model, "internalize-model");
+        assert!(targets[0].structured_json);
     }
 
     #[test]
@@ -405,6 +493,7 @@ mod tests {
             credential_id: id.into(),
             model: format!("{id}-model"),
             options: GenerationOptions::default(),
+            structured_json: false,
         }
     }
 

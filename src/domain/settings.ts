@@ -49,6 +49,26 @@ export interface ActionRoute {
   options: GenerationOptions
 }
 
+export interface TaskRoute {
+  primary: ModelRef
+  fallbacks?: ModelRef[]
+  options: GenerationOptions
+}
+
+export interface ContentConnectorProfile {
+  id: string
+  name: string
+  endpoint: string
+  queryParam: string
+  itemsPath: string
+  titlePath: string
+  urlPath: string
+  snippetPath: string
+  contentPath: string
+  apiKeyHeader?: string
+  enabled: boolean
+}
+
 export interface TriggerProfile {
   selectionEnabled: boolean
   dragEnabled: boolean
@@ -73,10 +93,12 @@ export interface UiPreferences {
 }
 
 export interface AppConfig {
-  schemaVersion: 2
+  schemaVersion: 3
   providers: ProviderProfile[]
   actions: ActionDefinition[]
   routes: ActionRoute[]
+  taskRoutes: Record<string, TaskRoute>
+  connectors: ContentConnectorProfile[]
   trigger: TriggerProfile
   appRules: AppRule[]
   ui: UiPreferences

@@ -95,10 +95,24 @@ pub fn show_home(app: &AppHandle) {
                 eprintln!("failed to emit home event: {error}");
             }
             if let Err(error) = show_window(&window) {
-                eprintln!("failed to show ZhiForge main window: {error}");
+                eprintln!("failed to show LearnWeave main window: {error}");
             }
         }
-        Err(error) => eprintln!("failed to resolve ZhiForge main window: {error}"),
+        Err(error) => eprintln!("failed to resolve LearnWeave main window: {error}"),
+    }
+}
+
+pub fn show_capture(app: &AppHandle) {
+    match main_window(app) {
+        Ok(window) => {
+            if let Err(error) = window.emit("app://capture", ()) {
+                eprintln!("failed to emit capture event: {error}");
+            }
+            if let Err(error) = show_window(&window) {
+                eprintln!("failed to show LearnWeave capture window: {error}");
+            }
+        }
+        Err(error) => eprintln!("failed to resolve LearnWeave capture window: {error}"),
     }
 }
 
@@ -112,9 +126,9 @@ pub fn show_settings(app: &AppHandle) {
                 eprintln!("failed to emit settings event: {error}");
             }
             if let Err(error) = show_window(&window) {
-                eprintln!("failed to show ZhiForge settings window: {error}");
+                eprintln!("failed to show LearnWeave settings window: {error}");
             }
         }
-        Err(error) => eprintln!("failed to resolve ZhiForge settings window: {error}"),
+        Err(error) => eprintln!("failed to resolve LearnWeave settings window: {error}"),
     }
 }

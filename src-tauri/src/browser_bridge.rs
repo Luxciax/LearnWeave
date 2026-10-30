@@ -26,13 +26,15 @@ pub struct BrowserBridgeState {
 
 struct BrowserBridgeInner {
     token: String,
-    pending: Mutex<Option<PendingZhihuContext>>,
+    pending: Mutex<Option<PendingBrowserContext>>,
 }
 
 #[derive(Clone, Debug)]
-struct PendingZhihuContext {
+struct PendingBrowserContext {
     capture_id: String,
     selection_key: String,
+    platform: String,
+    connector_id: String,
     url: String,
     title: Option<String>,
     page_title: Option<String>,
@@ -81,7 +83,7 @@ impl BrowserBridgeState {
         &self.inner.token
     }
 
-    fn store(&self, context: PendingZhihuContext) -> Result<(), String> {
+    fn store(&self, context: PendingBrowserContext) -> Result<(), String> {
         let mut pending = self
             .inner
             .pending
@@ -91,7 +93,7 @@ impl BrowserBridgeState {
         Ok(())
     }
 
-    fn take_matching(&self, selected_text: &str, now: i64) -> Option<PendingZhihuContext> {
+    fn take_matching(&self, selected_text: &str, now: i64) -> Option<PendingBrowserContext> {
         let Ok(mut pending) = self.inner.pending.lock() else {
             return None;
         };
@@ -116,7 +118,7 @@ pub fn start(app: &AppHandle) {
     app.manage(state);
 
     let spawn_result = std::thread::Builder::new()
-        .name("zhiforge-browser-bridge".into())
+        .name("learnweave-browser-bridge".into())
         .spawn(move || {
             let listener = match TcpListener::bind(BRIDGE_ADDRESS) {
                 Ok(listener) => listener,
@@ -163,9 +165,9 @@ pub(crate) fn enrich_capture(app: &AppHandle, mut input: SourceCaptureInput) -> 
         return input;
     };
 
-    input.platform = "zhihu".into();
+    input.platform = context.platform.clone();
     input.source_kind = Some("web".into());
-    input.connector_id = Some("zhihu".into());
+    input.connector_id = Some(context.connector_id.clone());
     input.url = Some(context.url);
     input.title = context.title;
     input.author = context.author;
@@ -207,7 +209,8 @@ fn handle_connection(stream: &mut TcpStream, state: &BrowserBridgeState) -> Resu
         return respond_empty(stream, 204, allowed_origin);
     }
 
-    if allowed_origin.is_none() || request.headers.get("x-zhiforge-client").map(String::as_str) != Some(CLIENT_NAME) {
+    let client = request.headers.get("x-learnweave-client").or_else(|| request.headers.get("x-zhiforge-client"));
+    if allowed_origin.is_none() || client.map(String::as_str) != Some(CLIENT_NAME) {
         return respond_json(stream, 403, json!({"success": false, "error": "client denied"}), None);
     }
 
@@ -218,7 +221,7 @@ fn handle_connection(stream: &mut TcpStream, state: &BrowserBridgeState) -> Resu
             json!({
                 "success": true,
                 "token": state.token(),
-                "version": 1,
+                "version": 2,
                 "expiresOnRestart": true
             }),
             allowed_origin,
@@ -345,22 +348,30 @@ fn read_http_request(stream: &mut TcpStream) -> Result<HttpRequest, String> {
     })
 }
 
-fn validate_capture_request(request: BrowserCaptureRequest) -> Result<PendingZhihuContext, String> {
-    if !request.platform.trim().eq_ignore_ascii_case("zhihu") {
-        return Err("browser capture platform must be zhihu".into());
+fn validate_capture_request(request: BrowserCaptureRequest) -> Result<PendingBrowserContext, String> {
+    let platform = request.platform.trim().to_ascii_lowercase();
+    if !matches!(platform.as_str(), "zhihu" | "web") {
+        return Err("browser capture platform must be web or zhihu".into());
     }
     let selected_text = request.selected_text.trim();
     if selected_text.is_empty() || selected_text.chars().count() > 200_000 {
         return Err("browser capture selection is empty or too large".into());
     }
-    let url = validate_zhihu_url(&request.url)?;
+    let url = if platform == "zhihu" {
+        validate_zhihu_url(&request.url)?
+    } else {
+        validate_external_url(&request.url)?.to_string()
+    };
+    let connector_id = if platform == "zhihu" { "zhihu" } else { "browser-helper" }.to_string();
     let title = bounded_optional(request.title, 500);
     let page_title = bounded_optional(request.page_title, 500);
     let title = title.or_else(|| page_title.clone());
 
-    Ok(PendingZhihuContext {
+    Ok(PendingBrowserContext {
         capture_id: Uuid::new_v4().to_string(),
         selection_key: selection_key(selected_text),
+        platform,
+        connector_id,
         url,
         title,
         page_title,
@@ -449,7 +460,7 @@ fn write_response(
     );
     if let Some(origin) = origin {
         response.push_str(&format!(
-            "Access-Control-Allow-Origin: {origin}\r\nVary: Origin\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Authorization, Content-Type, X-ZhiForge-Client\r\nAccess-Control-Allow-Private-Network: true\r\nCache-Control: no-store\r\n"
+            "Access-Control-Allow-Origin: {origin}\r\nVary: Origin\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Authorization, Content-Type, X-LearnWeave-Client, X-ZhiForge-Client\r\nAccess-Control-Allow-Private-Network: true\r\nCache-Control: no-store\r\n"
         ));
     }
     response.push_str("\r\n");
@@ -489,6 +500,16 @@ mod tests {
         let mut invalid = request("内容");
         invalid.url = "https://example.com/question/1".into();
         assert!(validate_capture_request(invalid).is_err());
+    }
+
+    #[test]
+    fn generic_web_capture_accepts_public_web_pages() {
+        let mut web = request("网页内容");
+        web.platform = "web".into();
+        web.url = "https://example.com/article".into();
+        let context = validate_capture_request(web).unwrap();
+        assert_eq!(context.platform, "web");
+        assert_eq!(context.connector_id, "browser-helper");
     }
 
     #[test]

@@ -28,7 +28,7 @@ pub async fn web_url_fetch(url: String) -> Result<WebUrlFetchResult, String> {
         let mut client_builder = Client::builder()
             .redirect(Policy::none())
             .timeout(REQUEST_TIMEOUT)
-            .user_agent("ZhiForge/1.4 local knowledge capture");
+            .user_agent("LearnWeave/1.5 local knowledge capture");
         if let Some(address) = resolved {
             client_builder = client_builder.resolve(&host, address);
         }
@@ -114,7 +114,7 @@ pub async fn web_url_fetch(url: String) -> Result<WebUrlFetchResult, String> {
     Err("URL fetch ended unexpectedly".into())
 }
 
-fn parse_public_url(input: &str) -> Result<Url, String> {
+pub(crate) fn parse_public_url(input: &str) -> Result<Url, String> {
     let url = Url::parse(input.trim()).map_err(|error| format!("invalid URL: {error}"))?;
     if !matches!(url.scheme(), "http" | "https") {
         return Err("URL must use http or https".into());
@@ -125,7 +125,7 @@ fn parse_public_url(input: &str) -> Result<Url, String> {
     Ok(url)
 }
 
-async fn validate_public_target(
+pub(crate) async fn validate_public_target(
     url: &Url,
 ) -> Result<(String, Option<std::net::SocketAddr>), String> {
     let host = url

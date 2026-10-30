@@ -32,6 +32,16 @@ const ADAPTER_LABELS: Record<ProviderAdapterId, string> = {
   gemini: 'Gemini'
 }
 
+const PROVIDER_PRESETS: Array<{ id: string; name: string; adapterId: ProviderAdapterId; apiBase: string }> = [
+  { id: 'deepseek', name: 'DeepSeek', adapterId: 'openai-chat', apiBase: 'https://api.deepseek.com' },
+  { id: 'qwen', name: '通义千问 / Model Studio', adapterId: 'openai-chat', apiBase: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
+  { id: 'kimi', name: 'Kimi / Moonshot', adapterId: 'openai-chat', apiBase: 'https://api.moonshot.cn/v1' },
+  { id: 'glm', name: '智谱 GLM', adapterId: 'openai-chat', apiBase: 'https://open.bigmodel.cn/api/paas/v4' },
+  { id: 'doubao', name: '豆包 / 火山方舟', adapterId: 'openai-chat', apiBase: 'https://ark.cn-beijing.volces.com/api/v3' },
+  { id: 'ollama', name: 'Ollama（本地）', adapterId: 'openai-chat', apiBase: 'http://127.0.0.1:11434/v1' },
+  { id: 'lm-studio', name: 'LM Studio（本地）', adapterId: 'openai-chat', apiBase: 'http://127.0.0.1:1234/v1' }
+]
+
 function optionalNumber(value: string): number | undefined {
   if (!value.trim()) return undefined
   const parsed = Number(value)
@@ -168,6 +178,27 @@ export function ProviderProfilesSettings({
     setModelFilter('')
     setModelError(null)
     setSaved(false)
+  }
+
+  const applyPreset = (presetId: string) => {
+    const preset = PROVIDER_PRESETS.find((item) => item.id === presetId)
+    if (!preset) return
+    modelLoadRevisionRef.current += 1
+    setLoadingModels(false)
+    setModels([])
+    setModelMenuOpen(false)
+    setModelFilter('')
+    setModelError(null)
+    setSaved(false)
+    setDraft((current) => current ? {
+      ...current,
+      name: preset.name,
+      adapterId: preset.adapterId,
+      apiBase: preset.apiBase,
+      headers: {},
+      defaultModel: ''
+    } : current)
+    setHeadersText('')
   }
 
   const updateAdapter = (adapterId: ProviderAdapterId) => {
@@ -355,6 +386,17 @@ export function ProviderProfilesSettings({
         {draft ? (
           <>
             <div className="settings-grid provider-grid">
+              <label className="wide">
+                <span>快速预设</span>
+                <select defaultValue="" onChange={(event) => {
+                  if (event.target.value) applyPreset(event.target.value)
+                  event.target.value = ''
+                }}>
+                  <option value="">选择服务商，一键填写协议与 API 地址…</option>
+                  {PROVIDER_PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
+                </select>
+              </label>
+
               <label className="wide">
                 <span>渠道名称</span>
                 <input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
@@ -597,7 +639,7 @@ export function ProviderProfilesSettings({
                 <textarea
                   value={headersText}
                   spellCheck={false}
-                  placeholder={'HTTP-Referer: https://example.com\nX-Title: ZhiForge'}
+                  placeholder={'HTTP-Referer: https://example.com\nX-Title: LearnWeave'}
                   onChange={(event) => {
                     modelLoadRevisionRef.current += 1
                     setLoadingModels(false)

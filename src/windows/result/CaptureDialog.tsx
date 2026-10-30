@@ -1,7 +1,8 @@
 import { emit } from '@tauri-apps/api/event'
-import { Check, Link2, LoaderCircle, Type, X } from 'lucide-react'
+import { Check, FileText, Link2, LoaderCircle, Type, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { captureKnowledge, fetchWebUrl, internalizeKnowledge } from '../../services/knowledge-service'
+import { extractPdf } from '../../services/pdf-service'
 import type { SourceCaptureInput } from '../../types'
 
 interface CaptureDialogProps {
@@ -10,12 +11,16 @@ interface CaptureDialogProps {
 }
 
 type CaptureState = 'idle' | 'saving' | 'saved' | 'error'
-type CaptureMode = 'text' | 'url'
+type CaptureMode = 'text' | 'url' | 'pdf'
 
 export function CaptureDialog({ onClose, onCaptured }: CaptureDialogProps) {
   const [mode, setMode] = useState<CaptureMode>('text')
   const [text, setText] = useState('')
   const [url, setUrl] = useState('')
+  const [pdfFile, setPdfFile] = useState<File | null>(null)
+  const [pdfText, setPdfText] = useState('')
+  const [pdfTitle, setPdfTitle] = useState('')
+  const [pdfPages, setPdfPages] = useState(0)
   const [state, setState] = useState<CaptureState>('idle')
   const [error, setError] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
@@ -23,7 +28,7 @@ export function CaptureDialog({ onClose, onCaptured }: CaptureDialogProps) {
 
   useEffect(() => {
     if (mode === 'text') textareaRef.current?.focus()
-    else urlRef.current?.focus()
+    else if (mode === 'url') urlRef.current?.focus()
   }, [mode])
 
   useEffect(() => {
@@ -41,10 +46,39 @@ export function CaptureDialog({ onClose, onCaptured }: CaptureDialogProps) {
     setError('')
   }
 
+  const selectPdf = async (file: File | null) => {
+    setPdfFile(file)
+    setPdfText('')
+    setPdfTitle('')
+    setPdfPages(0)
+    setError('')
+    if (!file) {
+      setState('idle')
+      return
+    }
+
+    setState('saving')
+    try {
+      const result = await extractPdf(file)
+      setPdfText(result.text)
+      setPdfTitle(result.title)
+      setPdfPages(result.pageCount)
+      setState('idle')
+    } catch (pdfError) {
+      setState('error')
+      setError(String(pdfError))
+    }
+  }
+
   const submit = async () => {
     if (state === 'saving') return
-    const value = mode === 'text' ? text.trim() : url.trim()
+    const value = mode === 'text'
+      ? text.trim()
+      : mode === 'url'
+        ? url.trim()
+        : pdfText.trim()
     if (!value) return
+
     setState('saving')
     setError('')
     try {
@@ -58,6 +92,14 @@ export function CaptureDialog({ onClose, onCaptured }: CaptureDialogProps) {
           selectedText: fetched.text,
           url: fetched.url,
           title: fetched.title
+        }
+      } else if (mode === 'pdf') {
+        input = {
+          platform: 'pdf',
+          sourceKind: 'document',
+          connectorId: 'pdf-upload',
+          selectedText: value,
+          title: pdfTitle || pdfFile?.name
         }
       } else {
         input = {
@@ -82,7 +124,11 @@ export function CaptureDialog({ onClose, onCaptured }: CaptureDialogProps) {
     }
   }
 
-  const canSubmit = (mode === 'text' ? text.trim() : url.trim()).length > 0
+  const canSubmit = (mode === 'text'
+    ? text.trim()
+    : mode === 'url'
+      ? url.trim()
+      : pdfText.trim()).length > 0
 
   return (
     <div className="capture-dialog-backdrop" role="presentation" onMouseDown={(event) => {
@@ -108,6 +154,10 @@ export function CaptureDialog({ onClose, onCaptured }: CaptureDialogProps) {
             <Link2 size={14} strokeWidth={1.8} />
             <span>URL</span>
           </button>
+          <button className={mode === 'pdf' ? 'active' : undefined} type="button" role="tab" aria-selected={mode === 'pdf'} onClick={() => setCaptureMode('pdf')}>
+            <FileText size={14} strokeWidth={1.8} />
+            <span>PDF</span>
+          </button>
         </div>
 
         {mode === 'text' ? (
@@ -128,7 +178,7 @@ export function CaptureDialog({ onClose, onCaptured }: CaptureDialogProps) {
               }}
             />
           </label>
-        ) : (
+        ) : mode === 'url' ? (
           <label className="capture-dialog-field capture-dialog-url-field">
             <span>网页地址</span>
             <input
@@ -153,19 +203,52 @@ export function CaptureDialog({ onClose, onCaptured }: CaptureDialogProps) {
             />
             <small>会读取公开网页正文；本机、局域网和非网页内容不会访问。</small>
           </label>
+        ) : (
+          <label className="capture-dialog-field">
+            <span>PDF 文件</span>
+            <input
+              type="file"
+              accept="application/pdf,.pdf"
+              disabled={state === 'saving' || state === 'saved'}
+              onChange={(event) => void selectPdf(event.target.files?.[0] || null)}
+            />
+            <small>
+              {pdfText
+                ? `已提取 ${pdfPages} 页 · ${pdfText.length.toLocaleString()} 字符`
+                : '本地解析 PDF，不上传原文件；扫描版 PDF 暂不做 OCR。'}
+            </small>
+          </label>
         )}
 
         {state === 'error' && <p className="capture-dialog-error">捕获失败：{error}</p>}
 
         <footer>
-          <small>{mode === 'text' ? `${text.trim().length.toLocaleString()} 字符` : '网页内容会保留最终 URL 与标题'}</small>
+          <small>
+            {mode === 'text'
+              ? `${text.trim().length.toLocaleString()} 字符`
+              : mode === 'url'
+                ? '网页内容会保留最终 URL 与标题'
+                : pdfFile?.name || '选择 PDF 文件'}
+          </small>
           <button
             className="capture-dialog-submit"
             type="button"
             disabled={!canSubmit || state === 'saving' || state === 'saved'}
             onClick={() => void submit()}>
             {state === 'saving' ? <LoaderCircle size={15} className="spin" /> : state === 'saved' ? <Check size={15} /> : null}
-            <span>{state === 'saving' ? (mode === 'url' ? '正在读取网页' : '正在保存') : state === 'saved' ? '已进入收件箱' : '加入收件箱'}</span>
+            <span>
+              {state === 'saving'
+                ? mode === 'url'
+                  ? '正在读取网页'
+                  : mode === 'pdf'
+                    ? pdfText
+                      ? '正在保存'
+                      : '正在解析 PDF'
+                    : '正在保存'
+                : state === 'saved'
+                  ? '已进入收件箱'
+                  : '加入收件箱'}
+            </span>
           </button>
         </footer>
       </section>

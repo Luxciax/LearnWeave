@@ -137,7 +137,7 @@ mod tests {
     fn custom_metadata_headers_are_allowed() {
         let headers = BTreeMap::from([
             ("HTTP-Referer".into(), "https://example.org".into()),
-            ("X-Title".into(), "ZhiForge".into()),
+            ("X-Title".into(), "LearnWeave".into()),
         ]);
         assert!(validate_headers("openrouter", &headers).is_ok());
     }

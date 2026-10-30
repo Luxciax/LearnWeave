@@ -89,5 +89,7 @@ fn default_config_path() -> Result<PathBuf, String> {
     let root = std::env::var_os("APPDATA")
         .map(PathBuf::from)
         .ok_or_else(|| "APPDATA is unavailable".to_string())?;
-    Ok(root.join("ZhiForge").join("config.json"))
+    let current = root.join("LearnWeave").join("config.json");
+    let legacy = root.join("ZhiForge").join("config.json");
+    Ok(if current.exists() || !legacy.exists() { current } else { legacy })
 }

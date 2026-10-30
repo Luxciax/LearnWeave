@@ -13,6 +13,24 @@ use super::{
     ProviderConfig,
 };
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Usage {
+    pub input_tokens: u32,
+    pub output_tokens: u32,
+    pub cached_tokens: Option<u32>,
+}
+
+impl Usage {
+    fn merge(&mut self, next: Usage) {
+        self.input_tokens = self.input_tokens.max(next.input_tokens);
+        self.output_tokens = self.output_tokens.max(next.output_tokens);
+        self.cached_tokens = match (self.cached_tokens, next.cached_tokens) {
+            (Some(left), Some(right)) => Some(left.max(right)),
+            (left, right) => left.or(right),
+        };
+    }
+}
+
 trait ProtocolAdapter: Sync {
     #[cfg(test)]
     fn kind(&self) -> ProviderAdapter;
@@ -22,11 +40,13 @@ trait ProtocolAdapter: Sync {
         provider: &ProviderConfig,
         prompt: &Prompt,
         options: &GenerationOptions,
+        structured_json: bool,
     ) -> RequestBuilder;
     fn build_models_request(&self, client: &Client, provider: &ProviderConfig) -> RequestBuilder;
     fn parse_stream_value(&self, value: &Value) -> Option<String>;
     fn parse_complete_value(&self, value: &Value) -> Option<String>;
     fn parse_models_value(&self, value: &Value) -> Vec<String>;
+    fn parse_usage_value(&self, value: &Value) -> Option<Usage>;
 }
 
 struct OpenAiChatAdapter;
@@ -66,8 +86,9 @@ impl ProtocolAdapter for OpenAiChatAdapter {
         provider: &ProviderConfig,
         prompt: &Prompt,
         options: &GenerationOptions,
+        structured_json: bool,
     ) -> RequestBuilder {
-        openai_request(client, provider, prompt, options)
+        openai_request(client, provider, prompt, options, structured_json)
     }
 
     fn build_models_request(&self, client: &Client, provider: &ProviderConfig) -> RequestBuilder {
@@ -88,6 +109,10 @@ impl ProtocolAdapter for OpenAiChatAdapter {
     fn parse_models_value(&self, value: &Value) -> Vec<String> {
         extract_openai_models(value)
     }
+
+    fn parse_usage_value(&self, value: &Value) -> Option<Usage> {
+        extract_openai_usage(value)
+    }
 }
 
 impl ProtocolAdapter for OpenAiResponsesAdapter {
@@ -102,8 +127,9 @@ impl ProtocolAdapter for OpenAiResponsesAdapter {
         provider: &ProviderConfig,
         prompt: &Prompt,
         options: &GenerationOptions,
+        structured_json: bool,
     ) -> RequestBuilder {
-        openai_responses_request(client, provider, prompt, options)
+        openai_responses_request(client, provider, prompt, options, structured_json)
     }
 
     fn build_models_request(&self, client: &Client, provider: &ProviderConfig) -> RequestBuilder {
@@ -124,6 +150,10 @@ impl ProtocolAdapter for OpenAiResponsesAdapter {
     fn parse_models_value(&self, value: &Value) -> Vec<String> {
         extract_openai_models(value)
     }
+
+    fn parse_usage_value(&self, value: &Value) -> Option<Usage> {
+        extract_openai_responses_usage(value)
+    }
 }
 
 impl ProtocolAdapter for AnthropicAdapter {
@@ -138,8 +168,9 @@ impl ProtocolAdapter for AnthropicAdapter {
         provider: &ProviderConfig,
         prompt: &Prompt,
         options: &GenerationOptions,
+        structured_json: bool,
     ) -> RequestBuilder {
-        anthropic_request(client, provider, prompt, options)
+        anthropic_request(client, provider, prompt, options, structured_json)
     }
 
     fn build_models_request(&self, client: &Client, provider: &ProviderConfig) -> RequestBuilder {
@@ -167,6 +198,10 @@ impl ProtocolAdapter for AnthropicAdapter {
             .map(str::to_string)
             .collect()
     }
+
+    fn parse_usage_value(&self, value: &Value) -> Option<Usage> {
+        extract_anthropic_usage(value)
+    }
 }
 
 impl ProtocolAdapter for GeminiAdapter {
@@ -181,8 +216,9 @@ impl ProtocolAdapter for GeminiAdapter {
         provider: &ProviderConfig,
         prompt: &Prompt,
         options: &GenerationOptions,
+        structured_json: bool,
     ) -> RequestBuilder {
-        gemini_request(client, provider, prompt, options)
+        gemini_request(client, provider, prompt, options, structured_json)
     }
 
     fn build_models_request(&self, client: &Client, provider: &ProviderConfig) -> RequestBuilder {
@@ -216,6 +252,10 @@ impl ProtocolAdapter for GeminiAdapter {
             .map(|name| name.strip_prefix("models/").unwrap_or(name).to_string())
             .collect()
     }
+
+    fn parse_usage_value(&self, value: &Value) -> Option<Usage> {
+        extract_gemini_usage(value)
+    }
 }
 
 pub async fn stream_completion<F>(
@@ -223,8 +263,9 @@ pub async fn stream_completion<F>(
     provider: &ProviderConfig,
     prompt: &Prompt,
     options: &GenerationOptions,
+    structured_json: bool,
     mut on_chunk: F,
-) -> Result<(), AiRuntimeError>
+) -> Result<Usage, AiRuntimeError>
 where
     F: FnMut(String) + Send,
 {
@@ -241,7 +282,7 @@ where
     );
 
     for attempt in 0..MAX_ATTEMPTS {
-        let request = adapter.build_stream_request(client, provider, prompt, &effective_options);
+        let request = adapter.build_stream_request(client, provider, prompt, &effective_options, structured_json);
 
         let response = match request.send().await {
             Ok(response) => response,
@@ -277,7 +318,7 @@ where
         .await;
 
         match result {
-            Ok(()) => return Ok(()),
+            Ok(usage) => return Ok(usage),
             Err(error) if emitted => return Err(error.into_partial()),
             Err(error) => {
                 last_error = error;
@@ -330,15 +371,20 @@ fn openai_request(
     provider: &ProviderConfig,
     prompt: &Prompt,
     options: &GenerationOptions,
+    structured_json: bool,
 ) -> RequestBuilder {
     let mut body = json!({
         "model": provider.model,
         "stream": true,
+        "stream_options": { "include_usage": true },
         "messages": [
             { "role": "system", "content": prompt.system },
             { "role": "user", "content": prompt.user }
         ]
     });
+    if structured_json {
+        body["response_format"] = json!({ "type": "json_object" });
+    }
     if let Some(value) = options.temperature {
         body["temperature"] = json!(value);
     }
@@ -365,6 +411,7 @@ fn openai_responses_request(
     provider: &ProviderConfig,
     prompt: &Prompt,
     options: &GenerationOptions,
+    structured_json: bool,
 ) -> RequestBuilder {
     let mut body = json!({
         "model": provider.model,
@@ -372,6 +419,9 @@ fn openai_responses_request(
         "instructions": prompt.system,
         "input": prompt.user
     });
+    if structured_json {
+        body["text"] = json!({ "format": { "type": "json_object" } });
+    }
     if let Some(value) = options.temperature {
         body["temperature"] = json!(value);
     }
@@ -398,6 +448,7 @@ fn anthropic_request(
     provider: &ProviderConfig,
     prompt: &Prompt,
     options: &GenerationOptions,
+    _structured_json: bool,
 ) -> RequestBuilder {
     let mut body = json!({
         "model": provider.model,
@@ -436,6 +487,7 @@ fn gemini_request(
     provider: &ProviderConfig,
     prompt: &Prompt,
     options: &GenerationOptions,
+    structured_json: bool,
 ) -> RequestBuilder {
     let mut body = json!({
         "systemInstruction": { "parts": [{ "text": prompt.system }] },
@@ -459,6 +511,9 @@ fn gemini_request(
             "thinkingConfig".into(),
             gemini_thinking_config(&provider.model, mode),
         );
+    }
+    if structured_json {
+        generation.insert("responseMimeType".into(), json!("application/json"));
     }
     if !generation.is_empty() {
         body["generationConfig"] = Value::Object(generation);
@@ -550,7 +605,7 @@ async fn consume_response<F>(
     response: Response,
     adapter: &dyn ProtocolAdapter,
     on_chunk: &mut F,
-) -> Result<(), AiRuntimeError>
+) -> Result<Usage, AiRuntimeError>
 where
     F: FnMut(String),
 {
@@ -562,7 +617,7 @@ async fn consume_response_with_idle<F>(
     adapter: &dyn ProtocolAdapter,
     on_chunk: &mut F,
     idle_timeout: Duration,
-) -> Result<(), AiRuntimeError>
+) -> Result<Usage, AiRuntimeError>
 where
     F: FnMut(String),
 {
@@ -614,13 +669,79 @@ where
         if let Some(text) = parse_complete_body(adapter, body.trim()) {
             if !text.is_empty() {
                 on_chunk(text);
-                return Ok(());
+                return Ok(extract_usage_from_wire(adapter, &raw));
             }
         }
         return Err(AiRuntimeError::empty());
     }
 
-    Ok(())
+    Ok(extract_usage_from_wire(adapter, &raw))
+}
+
+fn extract_usage_from_wire(adapter: &dyn ProtocolAdapter, raw: &[u8]) -> Usage {
+    let body = String::from_utf8_lossy(raw);
+    let mut usage = Usage::default();
+    for line in body.lines() {
+        let data = line.trim().strip_prefix("data:").map(str::trim).unwrap_or_else(|| line.trim());
+        if data.is_empty() || data == "[DONE]" || !data.starts_with('{') {
+            continue;
+        }
+        if let Ok(value) = serde_json::from_str::<Value>(data) {
+            if let Some(next) = adapter.parse_usage_value(&value) {
+                usage.merge(next);
+            }
+        }
+    }
+    if usage == Usage::default() {
+        if let Ok(value) = serde_json::from_str::<Value>(body.trim()) {
+            if let Some(next) = adapter.parse_usage_value(&value) {
+                usage.merge(next);
+            }
+        }
+    }
+    usage
+}
+
+fn token_count(value: Option<&Value>) -> u32 {
+    value.and_then(Value::as_u64).unwrap_or(0).min(u32::MAX as u64) as u32
+}
+
+fn extract_openai_usage(value: &Value) -> Option<Usage> {
+    let usage = value.get("usage")?;
+    Some(Usage {
+        input_tokens: token_count(usage.get("prompt_tokens")),
+        output_tokens: token_count(usage.get("completion_tokens")),
+        cached_tokens: usage.pointer("/prompt_tokens_details/cached_tokens").and_then(Value::as_u64).map(|v| v.min(u32::MAX as u64) as u32),
+    })
+}
+
+fn extract_openai_responses_usage(value: &Value) -> Option<Usage> {
+    let usage = value.get("usage").or_else(|| value.pointer("/response/usage"))?;
+    Some(Usage {
+        input_tokens: token_count(usage.get("input_tokens")),
+        output_tokens: token_count(usage.get("output_tokens")),
+        cached_tokens: usage.pointer("/input_tokens_details/cached_tokens").and_then(Value::as_u64).map(|v| v.min(u32::MAX as u64) as u32),
+    })
+}
+
+fn extract_anthropic_usage(value: &Value) -> Option<Usage> {
+    let usage = value.get("usage").or_else(|| value.pointer("/message/usage"))?;
+    let cached = token_count(usage.get("cache_read_input_tokens"));
+    Some(Usage {
+        input_tokens: token_count(usage.get("input_tokens")),
+        output_tokens: token_count(usage.get("output_tokens")),
+        cached_tokens: (cached > 0).then_some(cached),
+    })
+}
+
+fn extract_gemini_usage(value: &Value) -> Option<Usage> {
+    let usage = value.get("usageMetadata")?;
+    let cached = token_count(usage.get("cachedContentTokenCount"));
+    Some(Usage {
+        input_tokens: token_count(usage.get("promptTokenCount")),
+        output_tokens: token_count(usage.get("candidatesTokenCount")),
+        cached_tokens: (cached > 0).then_some(cached),
+    })
 }
 
 fn process_stream_wire_line(
@@ -1019,6 +1140,7 @@ mod tests {
                 &provider,
                 &prompt,
                 &GenerationOptions::default(),
+                false,
                 move |chunk| {
                     collected.lock().unwrap().push(chunk);
                 },
@@ -1067,6 +1189,7 @@ mod tests {
                 &provider,
                 &prompt,
                 &GenerationOptions::default(),
+                false,
                 move |chunk| {
                     collected.lock().unwrap().push(chunk);
                 },
@@ -1120,6 +1243,7 @@ mod tests {
                 &provider,
                 &prompt,
                 &GenerationOptions::default(),
+                false,
                 move |chunk| {
                     collected.lock().unwrap().push(chunk);
                 },
@@ -1182,6 +1306,7 @@ mod tests {
                 &provider,
                 &prompt,
                 &GenerationOptions::default(),
+                false,
                 move |chunk| {
                     collected.lock().unwrap().push(chunk);
                 },
@@ -1225,7 +1350,7 @@ mod tests {
             model: "gpt-test".into(),
             headers: Default::default(),
         };
-        let openai_body = request_json(openai_request(&Client::new(), &openai, &prompt, &options));
+        let openai_body = request_json(openai_request(&Client::new(), &openai, &prompt, &options, false));
         assert_json_float(&openai_body["temperature"], 0.7);
         assert_json_float(&openai_body["top_p"], 0.8);
         assert_eq!(openai_body["max_tokens"], json!(2048));
@@ -1239,7 +1364,7 @@ mod tests {
             headers: Default::default(),
         };
         let anthropic_body =
-            request_json(anthropic_request(&Client::new(), &anthropic, &prompt, &options));
+            request_json(anthropic_request(&Client::new(), &anthropic, &prompt, &options, false));
         assert_json_float(&anthropic_body["temperature"], 0.7);
         assert_json_float(&anthropic_body["top_p"], 0.8);
         assert_eq!(anthropic_body["max_tokens"], json!(2048));
@@ -1253,7 +1378,7 @@ mod tests {
             model: "gemini-3-pro".into(),
             headers: Default::default(),
         };
-        let gemini_body = request_json(gemini_request(&Client::new(), &gemini, &prompt, &options));
+        let gemini_body = request_json(gemini_request(&Client::new(), &gemini, &prompt, &options, false));
         assert_json_float(&gemini_body["generationConfig"]["temperature"], 0.7);
         assert_json_float(&gemini_body["generationConfig"]["topP"], 0.8);
         assert_eq!(gemini_body["generationConfig"]["maxOutputTokens"], json!(2048));
@@ -1269,15 +1394,15 @@ mod tests {
             model: "gpt-4.1-mini".into(),
             headers: std::collections::BTreeMap::from([
                 ("HTTP-Referer".into(), "https://example.org".into()),
-                ("X-Title".into(), "ZhiForge".into()),
+                ("X-Title".into(), "LearnWeave".into()),
             ]),
         };
-        let request = openai_responses_request(&Client::new(), &responses, &prompt, &options)
+        let request = openai_responses_request(&Client::new(), &responses, &prompt, &options, false)
             .build()
             .unwrap();
         assert_eq!(request.url().as_str(), "https://example.com/v1/responses");
         assert_eq!(request.headers().get("http-referer").unwrap(), "https://example.org");
-        assert_eq!(request.headers().get("x-title").unwrap(), "ZhiForge");
+        assert_eq!(request.headers().get("x-title").unwrap(), "LearnWeave");
         let body: Value = serde_json::from_slice(request.body().unwrap().as_bytes().unwrap()).unwrap();
         assert_eq!(body["instructions"], json!("system"));
         assert_eq!(body["input"], json!("hello"));
@@ -1289,6 +1414,40 @@ mod tests {
             })),
             Some("done".into())
         );
+    }
+
+    #[test]
+    fn structured_json_mode_is_mapped_to_supported_protocols() {
+        let prompt = Prompt { system: "Return JSON only".into(), user: "test".into() };
+        let options = GenerationOptions::default();
+
+        let openai = ProviderConfig {
+            adapter: ProviderAdapter::OpenAiCompatible,
+            api_base: "https://example.com/v1".into(),
+            api_key: String::new(),
+            model: "model".into(),
+            headers: Default::default(),
+        };
+        let openai_body = request_json(openai_request(&Client::new(), &openai, &prompt, &options, true));
+        assert_eq!(openai_body["response_format"]["type"], json!("json_object"));
+
+        let responses = ProviderConfig { adapter: ProviderAdapter::OpenAiResponses, ..openai.clone() };
+        let responses_body = request_json(openai_responses_request(&Client::new(), &responses, &prompt, &options, true));
+        assert_eq!(responses_body["text"]["format"]["type"], json!("json_object"));
+
+        let gemini = ProviderConfig {
+            adapter: ProviderAdapter::Gemini,
+            api_base: "https://example.com/v1beta".into(),
+            api_key: String::new(),
+            model: "gemini-test".into(),
+            headers: Default::default(),
+        };
+        let gemini_body = request_json(gemini_request(&Client::new(), &gemini, &prompt, &options, true));
+        assert_eq!(gemini_body["generationConfig"]["responseMimeType"], json!("application/json"));
+
+        let anthropic = ProviderConfig { adapter: ProviderAdapter::Anthropic, ..openai };
+        let anthropic_body = request_json(anthropic_request(&Client::new(), &anthropic, &prompt, &options, true));
+        assert!(anthropic_body.get("response_format").is_none());
     }
 
     #[test]

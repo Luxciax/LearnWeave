@@ -1,13 +1,23 @@
 # Changelog
 
-All notable public changes to ZhiForge are documented here.
+All notable public changes to LearnWeave (formerly ZhiForge) are documented here.
 
 The project follows Semantic Versioning from v1.0.0 onward.
 
 ## [1.4.0] - Unreleased
 
+### Added
+- Learning-first Capture → Inbox → Knowledge → Review workflow is now source-agnostic.
+- Text, URL, Browser Helper and text-based PDF capture.
+- Discover connectors for Wikipedia, arXiv, Stack Overflow, Hacker News, RSS/Atom and Zhihu.
+- BYOK Brave Search, Tavily and Exa connectors plus custom HTTP/JSON connectors.
+- Per-task AI routes for extraction, question generation, assessment, review planning and research, with token usage reporting.
+- Provider presets for DeepSeek, Qwen, Kimi, GLM, Doubao, Ollama and LM Studio.
+- Ctrl+Shift+Space and tray Capture entry points.
+
 ### Changed
-- ZhiForge-owned code is now source-available under the PolyForm Noncommercial License 1.0.0.
+- Product name is now LearnWeave; existing ZhiForge data/config/credentials remain readable through compatibility fallbacks.
+- LearnWeave-owned code is source-available under the PolyForm Noncommercial License 1.0.0.
 - Commercial or business use of v1.4.0 and later requires a separate written commercial license.
 - Prior releases through v1.3.0 remain under their original AGPL-3.0-only grants; the license change is prospective and does not revoke prior grants.
 

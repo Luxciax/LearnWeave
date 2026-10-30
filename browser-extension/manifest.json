@@ -1,12 +1,12 @@
 {
   "manifest_version": 3,
-  "name": "ZhiForge Browser Helper",
+  "name": "LearnWeave Browser Helper",
   "version": "1.0.0",
-  "description": "Adds structured Zhihu source context to the ZhiForge desktop capture flow.",
+  "description": "Adds structured web source context to the LearnWeave desktop capture flow.",
   "host_permissions": [
     "http://127.0.0.1:17832/*",
-    "https://zhihu.com/*",
-    "https://*.zhihu.com/*"
+    "http://*/*",
+    "https://*/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -14,8 +14,8 @@
   "content_scripts": [
     {
       "matches": [
-        "https://zhihu.com/*",
-        "https://*.zhihu.com/*"
+        "http://*/*",
+        "https://*/*"
       ],
       "js": [
         "zhihu-adapter.js",
@@ -25,6 +25,6 @@
     }
   ],
   "action": {
-    "default_title": "ZhiForge Browser Helper"
+    "default_title": "LearnWeave Browser Helper"
   }
 }

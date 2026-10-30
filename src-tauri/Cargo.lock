@@ -5565,7 +5565,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "zhiforge"
+name = "learnweave"
 version = "1.4.0"
 dependencies = [
  "futures-util",

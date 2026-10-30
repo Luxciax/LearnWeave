@@ -1,71 +1,41 @@
-# ZhiForge Demo Runbook
+# LearnWeave Demo Runbook
 
-This is the short, reliable demonstration path for the hackathon build.
+This is the short demonstration path for the current learning-first build.
 
 ## Before the demo
 
-1. Start ZhiForge and open **Settings**.
-2. Confirm one AI provider/model is enabled for the internalization route.
-3. Confirm the Zhihu Access Secret is configured if you plan to use live Zhihu search.
-4. Keep one known-good Zhihu query ready. If the network or Zhihu API is unavailable, use the desktop selection entry on any prepared article/text instead.
+1. Start LearnWeave and confirm one AI provider/model is enabled.
+2. Use **学习 AI** if you want different models for extraction, questions, assessment, review planning, or research.
+3. Optionally configure Zhihu, Brave, Tavily, Exa, or a custom Connector.
 
-## 3-minute judge flow
+## 3-minute flow
 
-### 1. Find useful knowledge
+### 1. Capture or discover useful material
 
-Open **搜知乎**, search a prepared topic, open one result, and choose a useful passage or the full answer.
+Open **发现** and search Wikipedia/arXiv/Stack Overflow/Hacker News/Zhihu, or use **捕获** for text, URL, or PDF. Browser selections and Ctrl+Shift+Space are alternate capture entries.
 
 Click **加入收件箱**.
 
-What to say: ZhiForge does not turn every saved paragraph directly into permanent knowledge. New material first enters an Inbox and keeps the original source as the authority.
+### 2. Turn source material into knowledge
 
-### 2. Turn the source into reviewable knowledge
+Open **收件箱**, inspect AI extraction and duplicate/conflict classification, deselect anything unnecessary, then accept the selected drafts.
 
-Open **收件箱**. Wait for extraction to finish, inspect the generated drafts, deselect anything unnecessary, then click **接收选中**.
+Source Evidence remains attached to every formal knowledge unit.
 
-What to say: AI proposes atomic knowledge units and evidence, but the user controls what becomes formal knowledge. Evidence remains linked to the exact source text.
+### 3. Show active recall
 
-If extraction, evidence validation, or duplicate classification fails, the Inbox shows an explicit retryable failure. It does not silently convert malformed AI output into accepted-looking drafts.
-
-### 3. Show that knowledge becomes learnable
-
-Open the accepted knowledge item and start one understanding question. Before submission, ZhiForge hides the core claim, evidence, personal note, knowledge structure, and original text. Submit an answer, then show the revealed evidence and source link.
-
-What to say: the goal is not another bookmark collection. Knowledge becomes something the user must actively recall first, then verify against the original source.
+Open an accepted knowledge item and answer one generated question. LearnWeave hides the source before submission, then judges against stored Evidence and reveals what was missed.
 
 ### 4. Show the daily loop
 
-Open **今天**.
+Open **今天** and continue due learning/review work. The product is an action queue rather than a bookmark collection or analytics dashboard.
 
-Point out the six compact summaries: Inbox, learning/review, research gaps, knowledge maintenance, organization suggestions, and AI tasks. Then open one concrete item from the action queue.
+### 5. Show source breadth
 
-What to say: Today answers one question: “What should I do next to make this knowledge base more useful?” It is an action queue rather than an analytics dashboard.
+Return to **发现**, switch Connector, or capture a PDF/URL. Every supported source enters the same Inbox → Knowledge → Question → Review path.
 
-### 5. Show knowledge growth
+## Key story
 
-Open **主题扩充**, enter a topic, and run **分析知识缺口**. Pick one gap and search Zhihu. Add one candidate source to the Inbox.
+**Source → Inbox → Accept → Active Recall → Evidence-grounded Feedback → Review**
 
-What to say: ZhiForge can compare a learning goal with what the user already knows, identify missing parts, then turn external material into the same controlled learning pipeline.
-
-## Demo fallback and recovery order
-
-If live Zhihu search is unavailable:
-
-1. Use the Windows text-selection toolbar on prepared text.
-2. Capture it into ZhiForge.
-3. Continue from **收件箱** → **知识库** → **今天**.
-
-If an AI response is malformed, the item enters an explicit failed state. Fix the Provider/model issue if necessary and use the retry path; do not present degraded deterministic output as successful AI internalization.
-
-If an AI task fails or remains stuck for too long:
-
-1. Open **今天** → **AI 任务**.
-2. The task center converts stale processing jobs into explicit retryable failures instead of leaving an endless spinner.
-3. Click **重试**. If the expected drafts or questions were already committed before the failure, ZhiForge reconciles the task to completed instead of duplicating work.
-4. For extraction failures, **收件箱** shows the same failed state and retry path. A question-generation failure does not move already accepted knowledge back to a failed Inbox state.
-
-## Do not depend on during the short demo
-
-The graph, advanced curation, backup/restore, deep review scheduling, and semantic search are useful supporting features, but they are not required to prove the primary product story. Keep the judge flow focused on:
-
-**Source → Inbox → Review/Accept → Focused Recall → Evidence → Today → Topic Research**
+One-shot actions such as translation/explanation remain useful desktop tools but do not pollute the learning Inbox.

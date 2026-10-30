@@ -84,6 +84,11 @@ export interface ModelCapabilities {
   topP: boolean
   maxOutputTokens: boolean
   reasoning: boolean
+  jsonMode: boolean
+  jsonSchema: boolean
+  streaming: boolean
+  vision: boolean
+  contextWindow?: number
 }
 
 export interface AiErrorEvent {

@@ -55,7 +55,7 @@ export function ProviderSettings({ value, onApply, onClose }: ProviderSettingsPr
         <aside className="settings-sidebar">
           <div className="settings-brand">
             <div>
-              <strong>ZhiForge</strong>
+              <strong>LearnWeave</strong>
               <span>设置中心</span>
             </div>
           </div>
