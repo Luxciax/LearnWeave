@@ -1,6 +1,6 @@
 [package]
 name = "learnweave"
-version = "1.4.0"
+version = "1.5.0"
 description = "Local-first desktop knowledge internalization assistant"
 authors = ["LearnWeave contributors"]
 license = "PolyForm-Noncommercial-1.0.0"

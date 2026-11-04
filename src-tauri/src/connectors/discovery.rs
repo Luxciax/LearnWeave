@@ -56,7 +56,7 @@ impl BuiltinDiscoveryConnector {
 }
 
 impl SourceConnector for BuiltinDiscoveryConnector {
-    fn id(&self) -> &'static str { self.id }
+    fn id(&self) -> &str { self.id }
 
     fn capabilities(&self) -> Capabilities {
         Capabilities { search: true, fetch: false }
@@ -70,6 +70,8 @@ impl SourceConnector for BuiltinDiscoveryConnector {
             locator: result.url.clone().unwrap_or_default(),
             title: result.title,
             snippet: result.snippet,
+            content_text: result.content_text,
+            author: result.author,
             url: result.url,
         }).collect())
     }
@@ -117,7 +119,16 @@ fn search_rss<'a>(_client: &'a Client, query: &'a str, limit: u32) -> SearchFutu
     Box::pin(rss(query, limit))
 }
 
+fn search_zhihu<'a>(_client: &'a Client, query: &'a str, limit: u32) -> SearchFuture<'a> {
+    Box::pin(async move {
+        let connector = super::zhihu::ZhihuConnector;
+        let items = connector.search(query, limit).await.map_err(|error| error.to_string())?;
+        Ok(content_refs_to_results(connector.id(), items))
+    })
+}
+
 const BUILTIN_DISCOVERY_CONNECTORS: &[BuiltinDiscoveryConnector] = &[
+    BuiltinDiscoveryConnector { id: "zhihu", label: "知乎", kind: "public", requires_key: true, query_hint: "搜索知乎", search_handler: search_zhihu },
     BuiltinDiscoveryConnector { id: "wikipedia", label: "Wikipedia", kind: "public", requires_key: false, query_hint: "搜索百科主题", search_handler: search_wikipedia },
     BuiltinDiscoveryConnector { id: "arxiv", label: "arXiv", kind: "public", requires_key: false, query_hint: "搜索论文主题", search_handler: search_arxiv },
     BuiltinDiscoveryConnector { id: "stackexchange", label: "Stack Overflow", kind: "public", requires_key: false, query_hint: "搜索技术问题", search_handler: search_stackexchange },
@@ -129,7 +140,9 @@ const BUILTIN_DISCOVERY_CONNECTORS: &[BuiltinDiscoveryConnector] = &[
 ];
 
 fn descriptor(id: &str, label: &str, kind: &str, requires_key: bool, query_hint: &str) -> DiscoverConnectorDescriptor {
-    let configured = if requires_key {
+    let configured = if id == "zhihu" {
+        crate::zhihu_search::zhihu_access_secret_configured().unwrap_or(false)
+    } else if requires_key {
         credential::load(id).map(|value| !value.trim().is_empty()).unwrap_or(false)
     } else {
         true
@@ -179,12 +192,82 @@ pub async fn discover_search(
     if let Some(connector) = BUILTIN_DISCOVERY_CONNECTORS.iter()
         .find(|item| item.id == connector_id)
     {
-        return connector.search_results(&client, &query, limit).await;
+        return search_source_connector(connector, &query, limit).await;
     }
     let profile = config.connectors.iter()
         .find(|item| item.enabled && item.id.eq_ignore_ascii_case(&connector_id))
+        .cloned()
         .ok_or_else(|| format!("unknown or disabled connector '{connector_id}'"))?;
-    custom_json(&client, profile, &query, limit).await
+    let connector = CustomDiscoveryConnector { client, profile };
+    search_source_connector(&connector, &query, limit).await
+}
+
+fn content_refs_to_results(connector_id: &str, items: Vec<ContentRef>) -> Vec<DiscoverResult> {
+    items.into_iter().map(|item| DiscoverResult {
+        connector_id: connector_id.to_string(),
+        title: item.title,
+        url: item.url,
+        author: item.author,
+        snippet: item.snippet,
+        content_text: item.content_text,
+    }).collect()
+}
+
+async fn search_source_connector<C: SourceConnector>(
+    connector: &C,
+    query: &str,
+    limit: u32,
+) -> Result<Vec<DiscoverResult>, String> {
+    if !connector.capabilities().search {
+        return Err(format!("connector '{}' does not support search", connector.id()));
+    }
+    let items = connector.search(query, limit).await.map_err(|error| error.to_string())?;
+    Ok(content_refs_to_results(connector.id(), items))
+}
+
+struct CustomDiscoveryConnector {
+    client: Client,
+    profile: ContentConnectorProfile,
+}
+
+impl SourceConnector for CustomDiscoveryConnector {
+    fn id(&self) -> &str {
+        &self.profile.id
+    }
+
+    fn capabilities(&self) -> Capabilities {
+        Capabilities { search: true, fetch: false }
+    }
+
+    async fn search(&self, query: &str, limit: u32) -> Result<Vec<ContentRef>, ConnectorError> {
+        let results = custom_json(&self.client, &self.profile, query, limit)
+            .await
+            .map_err(ConnectorError::from)?;
+        Ok(results.into_iter().map(|result| ContentRef {
+            locator: result.url.clone().unwrap_or_default(),
+            title: result.title,
+            snippet: result.snippet,
+            content_text: result.content_text,
+            author: result.author,
+            url: result.url,
+        }).collect())
+    }
+
+    fn to_source(&self, content: &FetchedContent, selection: Option<&str>) -> SourceCaptureInput {
+        SourceCaptureInput {
+            platform: "web".into(),
+            source_kind: Some("web".into()),
+            connector_id: Some(self.profile.id.clone()),
+            selected_text: selection.unwrap_or(&content.text).to_string(),
+            url: content.url.clone(),
+            title: content.title.clone(),
+            author: content.author.clone(),
+            context_before: None,
+            context_after: None,
+            application: None,
+            window_title: None,
+        }
+    }
 }
 
 async fn json_response(response: reqwest::Response, label: &str) -> Result<Value, String> {
@@ -528,7 +611,7 @@ mod tests {
             assert!(connector.capabilities().search);
             assert!(!connector.capabilities().fetch);
         }
-        assert_eq!(ids.len(), 8);
+        assert_eq!(ids.len(), 9);
     }
 
     #[test]

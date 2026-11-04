@@ -22,6 +22,8 @@ pub struct ContentRef {
     pub locator: String,
     pub title: String,
     pub snippet: String,
+    pub content_text: String,
+    pub author: Option<String>,
     pub url: Option<String>,
 }
 
@@ -59,7 +61,7 @@ impl From<String> for ConnectorError {
 
 #[allow(async_fn_in_trait)]
 pub trait SourceConnector: Send + Sync {
-    fn id(&self) -> &'static str;
+    fn id(&self) -> &str;
     fn capabilities(&self) -> Capabilities;
 
     async fn search(&self, _query: &str, _limit: u32) -> Result<Vec<ContentRef>, ConnectorError> {
@@ -81,12 +83,14 @@ pub struct ConnectorDescriptor {
 }
 
 pub const BUILTIN_CONNECTORS: &[ConnectorDescriptor] = &[
-    ConnectorDescriptor {
-        id: "web-url",
-        capabilities: Capabilities { search: false, fetch: true },
-    },
-    ConnectorDescriptor {
-        id: "zhihu",
-        capabilities: Capabilities { search: true, fetch: true },
-    },
+    ConnectorDescriptor { id: "web-url", capabilities: Capabilities { search: false, fetch: true } },
+    ConnectorDescriptor { id: "zhihu", capabilities: Capabilities { search: true, fetch: true } },
+    ConnectorDescriptor { id: "wikipedia", capabilities: Capabilities { search: true, fetch: false } },
+    ConnectorDescriptor { id: "arxiv", capabilities: Capabilities { search: true, fetch: false } },
+    ConnectorDescriptor { id: "stackexchange", capabilities: Capabilities { search: true, fetch: false } },
+    ConnectorDescriptor { id: "hacker-news", capabilities: Capabilities { search: true, fetch: false } },
+    ConnectorDescriptor { id: "rss", capabilities: Capabilities { search: true, fetch: false } },
+    ConnectorDescriptor { id: "brave", capabilities: Capabilities { search: true, fetch: false } },
+    ConnectorDescriptor { id: "tavily", capabilities: Capabilities { search: true, fetch: false } },
+    ConnectorDescriptor { id: "exa", capabilities: Capabilities { search: true, fetch: false } },
 ];

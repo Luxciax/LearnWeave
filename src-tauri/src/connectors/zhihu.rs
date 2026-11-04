@@ -5,7 +5,7 @@ use super::{Capabilities, ConnectorError, ContentRef, FetchedContent, SourceConn
 pub struct ZhihuConnector;
 
 impl SourceConnector for ZhihuConnector {
-    fn id(&self) -> &'static str {
+    fn id(&self) -> &str {
         "zhihu"
     }
 
@@ -27,6 +27,8 @@ impl SourceConnector for ZhihuConnector {
                     locator,
                     title: item.title,
                     snippet: item.content_text.chars().take(500).collect(),
+                    content_text: item.content_text,
+                    author: (!item.author_name.trim().is_empty()).then_some(item.author_name),
                     url,
                 }
             })

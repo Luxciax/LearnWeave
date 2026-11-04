@@ -7,7 +7,6 @@ import {
   type DiscoverResult
 } from '../../services/discovery-service'
 import { captureKnowledge, internalizeKnowledge, openSourceUrl } from '../../services/knowledge-service'
-import { isZhihuAccessSecretConfigured } from '../../services/zhihu-service'
 import { ZhihuSearchView } from './ZhihuSearchView'
 
 interface DiscoverViewProps {
@@ -16,15 +15,6 @@ interface DiscoverViewProps {
   onCaptured: () => void
   onOpenCapture: () => void
   onOpenSettings: () => void
-}
-
-const ZHIHU: DiscoverConnectorDescriptor = {
-  id: 'zhihu',
-  label: '知乎',
-  kind: 'public',
-  configured: true,
-  requiresKey: true,
-  queryHint: '搜索知乎'
 }
 
 export function DiscoverView({
@@ -43,11 +33,7 @@ export function DiscoverView({
   const [error, setError] = useState<string | null>(null)
 
   const refreshSources = useCallback(async () => {
-    const [items, zhihuConfigured] = await Promise.all([
-      listDiscoverConnectors(),
-      isZhihuAccessSecretConfigured().catch(() => false)
-    ])
-    const next = zhihuConfigured ? [ZHIHU, ...items] : items
+    const next = await listDiscoverConnectors()
     setConnectors(next)
     setConnectorId((current) => current && next.some((item) => item.id === current)
       ? current

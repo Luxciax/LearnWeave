@@ -26,7 +26,7 @@ pub struct WebUrlFetchResult {
 pub struct WebUrlConnector;
 
 impl SourceConnector for WebUrlConnector {
-    fn id(&self) -> &'static str {
+    fn id(&self) -> &str {
         "web-url"
     }
 

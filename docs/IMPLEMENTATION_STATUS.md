@@ -1,7 +1,7 @@
 # LearnWeave Implementation Status
 
 > Last updated: 2026-11-04  
-> Code baseline commit: `e481074`
+> Release candidate: `v1.5.0` on `codex/connector-runtime-unification`
 
 This file is the source of truth for **what is actually implemented now**.
 
@@ -35,7 +35,7 @@ Status meanings:
 | Tray capture entry | Done | Available from tray integration. |
 | Global capture shortcut | Done | `Ctrl+Shift+Space`. |
 | Text-based PDF import | Done | Local PDF.js extraction; original file is not uploaded. |
-| Scanned/image-only PDF OCR | **Not done** | Current UI explicitly asks the user to OCR scanned PDFs first. |
+| Scanned/image-only PDF OCR | Done | Sparse/image-only pages automatically fall back to local Tesseract OCR; captured text keeps page markers and the original PDF is not uploaded. |
 
 ## Inbox and knowledge workflow
 
@@ -77,7 +77,7 @@ Status meanings:
 | Custom HTTP / JSON | Done | User-configurable GET endpoint and field mappings exist. |
 | Connector API keys in Windows Credential Manager | Done | Paid/custom connector secrets are kept out of config files. |
 | Rust `SourceConnector` core interface | Done | Core trait, capability metadata, Web URL and Zhihu implementations exist. |
-| All Discover sources routed through `SourceConnector` | **Partial** | Eight built-in sources now use a centralized registry with `SourceConnector` adapters rather than a hard-coded Discover dispatcher. Custom HTTP/JSON and the specialized Zhihu reader flow still need a fully shared runtime boundary. |
+| All Discover searches routed through `SourceConnector` | Done | Wikipedia, arXiv, Stack Exchange, HN, RSS, Brave, Tavily, Exa, Zhihu search and custom HTTP/JSON all cross the shared search boundary. Zhihu keeps its richer reader UI on top of the same connector metadata. |
 | Live upstream E2E verification | **Verification pending** | Implementations exist, but every external service has not yet been validated with real live responses/keys. |
 
 ## AI routing and usage
@@ -102,7 +102,7 @@ Status meanings:
 | Local knowledge search | Done | Local candidate search works. |
 | AI semantic reranking | Done | Structured AI reranking exists. |
 | Fallback when reranking fails | Done | Falls back to local matches. |
-| Rerank reliability/diagnostics | **Partial** | Failure currently degrades to “本地检索命中；语义重排暂不可用”; diagnostics can be improved. |
+| Rerank reliability/diagnostics | Done | Query-expansion/rerank status and bounded failure diagnostics are returned explicitly; fallback remains non-fatal and visible in the Library UI. |
 
 ## Build and verification
 
@@ -126,14 +126,13 @@ For that final delta:
 
 ## Remaining work
 
-The remaining work is intentionally small and concrete:
+The code gaps tracked for the generic-learning refactor are complete. Remaining work is verification/release work:
 
-1. Finish the shared Connector runtime boundary for custom HTTP/JSON and the specialized Zhihu reader flow; eight built-in Discover sources now use one registry and expose `SourceConnector` adapters.
-2. Add OCR for scanned/image-only PDFs.
-3. Perform live E2E verification for every external connector.
-4. Improve semantic-rerank diagnostics and capability handling.
-5. Run the full release gate against the exact final release commit.
-6. Optionally rename the local development folder from `ZhiForge` to `LearnWeave`; this is housekeeping only and does not affect the product identity.
+1. Perform live E2E verification for external connectors that require real upstream services/credentials.
+2. Verify the AI routing matrix against actual configured providers/models.
+3. Run the full Windows release gate against the exact `v1.5.0` release commit.
+4. Verify installer/MSI/portable artifacts and published SHA-256 checksums.
+5. Optionally rename the local development folder from `ZhiForge` to `LearnWeave`; this is housekeeping only and does not affect the product identity.
 
 ## Local-only files
 
@@ -144,11 +143,10 @@ At the time of this update, these are intentionally not part of the tracked proj
 
 Do not treat them as authoritative implementation status unless they are deliberately reviewed and committed later.
 
-## Connector registry follow-up (development branch)
+## v1.5.0 release-candidate delta
 
-- Branch: `codex/connector-runtime-unification`.
-- Built-in Wikipedia, arXiv, Stack Exchange, Hacker News, RSS, Brave, Tavily, and Exa dispatch now uses a centralized registry; metadata and `SourceConnector` search adapters are provided by the same entries.
-- Added registry uniqueness and source-provenance tests.
-- The existing HTTP implementations and user-visible Discover result model remain unchanged.
-- **Verification pending:** neither Rust tests nor Windows CI were run for this branch in the current session. This change is not claimed as release-ready.
-- Remaining: unify custom connector execution and Zhihu's richer path; complete live upstream E2E verification.
+- Unified Discover search execution through `SourceConnector`, including Zhihu search and custom HTTP/JSON profiles.
+- Added scanned/image-only PDF OCR fallback with page-aware captured text.
+- Added explicit semantic expansion/rerank fallback diagnostics.
+- Local `pnpm check` and `pnpm build` pass for this release candidate.
+- **Windows/Rust verification pending:** the local MCPX environment does not expose Rust/Cargo, so the strengthened GitHub Actions Windows release gate is the authoritative Rust/test/bundle check for this exact candidate.

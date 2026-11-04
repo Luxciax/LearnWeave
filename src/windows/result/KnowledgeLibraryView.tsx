@@ -295,11 +295,21 @@ export function KnowledgeLibraryView({ initialTopicId = null, onOpenKnowledge }:
             <span><Sparkles size={13} strokeWidth={1.8} />智能搜索</span>
             <strong>“{semanticResult.query}”</strong>
             <small>
-              从 {semanticResult.candidateCount} 个候选中重排
+              {semanticResult.rerankStatus === 'fallback'
+                ? '语义重排不可用，已回退本地匹配'
+                : `从 ${semanticResult.candidateCount} 个候选中重排`}
               {semanticResult.usedExpansion && semanticResult.expandedTerms.length > 0
                 ? ` · 扩展：${semanticResult.expandedTerms.join(' / ')}`
                 : ''}
+              {semanticResult.expansionStatus === 'fallback'
+                ? ' · 查询扩展不可用'
+                : ''}
             </small>
+            {(semanticResult.rerankError || semanticResult.expansionError) && (
+              <small title={[semanticResult.expansionError, semanticResult.rerankError].filter(Boolean).join('；')}>
+                降级原因：{semanticResult.rerankError || semanticResult.expansionError}
+              </small>
+            )}
           </div>
           <button type="button" title="返回普通搜索结果" onClick={() => setSemanticResult(null)}><X size={13} strokeWidth={1.8} /></button>
         </div>

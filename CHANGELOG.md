@@ -4,7 +4,18 @@ All notable public changes to LearnWeave (formerly ZhiForge) are documented here
 
 The project follows Semantic Versioning from v1.0.0 onward.
 
-## [1.4.0] - Unreleased
+## [1.5.0] - 2026-11-04
+
+### Added
+- Automatic local OCR fallback for scanned/image-only PDF pages, with page markers preserved in captured text.
+- Semantic-search diagnostics that distinguish normal AI reranking from local fallback and expose a bounded failure reason.
+
+### Changed
+- Discover now routes built-in sources, Zhihu search and custom HTTP/JSON connectors through the common `SourceConnector` search boundary.
+- Connector metadata is centralized in the backend instead of duplicating Zhihu availability checks in the frontend.
+- Windows release CI now runs frontend build, Rust formatting, tests and Clippy before packaging, and publishes checksums for installers plus the portable executable.
+
+## [1.4.0] - 2026-09-15
 
 ### Added
 - Learning-first Capture → Inbox → Knowledge → Review workflow is now source-agnostic.

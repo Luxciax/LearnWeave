@@ -18,25 +18,35 @@ External discovery is a separate path:
 
 One-shot desktop AI actions such as translation, explanation, summarization, polishing, and custom prompts remain separate from the learning Inbox.
 
+## v1.5.0 refactor completion
+
+The generic-learning code goals for this phase are implemented:
+
+- built-in, Zhihu and custom HTTP/JSON Discover searches cross one `SourceConnector` search boundary;
+- connector metadata is centralized in the backend while Zhihu keeps its richer reader UX;
+- PDF capture extracts embedded text and automatically OCRs sparse/image-only pages locally;
+- captured PDF text retains page markers;
+- semantic search exposes expansion/rerank fallback state and bounded diagnostics instead of silently hiding degradation;
+- existing ZhiForge data/settings/credentials remain readable.
+
 ## Current priorities
 
-### 1. Finish the generic Connector runtime
+### 1. Release-quality validation
 
-The Connector model already exists, but the runtime is not fully unified yet.
+Before publishing a stable LearnWeave release:
 
-Target:
+- run frontend type-check and production build;
+- run Rust formatting, tests and Clippy;
+- run Windows Tauri bundle build;
+- verify upgrade from an existing ZhiForge installation;
+- verify database/settings/credential fallback and migration;
+- verify installer, MSI, portable executable, hashes, and release notes.
 
-- every built-in source exposes stable connector metadata;
-- search/fetch behavior goes through one Connector boundary;
-- source conversion always produces the same generic source model;
-- Zhihu remains a richer connector, not a special product path;
-- custom HTTP/JSON connectors use the same execution boundary where practical.
-
-Success condition: adding a new source should not require editing the main Discover dispatcher.
+The GitHub Actions Windows release workflow is the authoritative release gate for Rust and Windows packaging.
 
 ### 2. Complete real-world Connector verification
 
-Run end-to-end tests against live upstream services:
+Run end-to-end checks against live upstream services where credentials/services are available:
 
 - Wikipedia
 - arXiv
@@ -51,47 +61,21 @@ Run end-to-end tests against live upstream services:
 
 Verify authentication, field mapping, rate limits, empty results, malformed responses, and capture-to-Inbox behavior.
 
-### 3. Improve PDF ingestion
+### 3. Verify AI routing against real providers
 
-Current PDF support extracts embedded text locally.
+Capability metadata and per-task routing are implemented. Remaining work is provider/model verification:
 
-Next:
-
-- add OCR for scanned/image-only PDFs;
-- preserve page metadata where useful;
-- keep original PDF local;
-- avoid silently treating an empty scanned PDF as successful text capture.
-
-### 4. Strengthen semantic search and model capability handling
-
-Semantic reranking already exists with local-search fallback.
-
-Next:
-
-- make capability detection explicit per model/provider;
-- make rerank fallback state visible without presenting it as a hard failure;
-- improve retry/error diagnostics;
-- verify task routing with weak/strong model combinations.
-
-### 5. Release-quality validation
-
-Before a stable LearnWeave release:
-
-- run frontend type-check/build;
-- run full Rust tests;
-- run Windows Tauri bundle build;
-- verify upgrade from an existing ZhiForge installation;
-- verify database/settings/credential fallback and migration;
-- verify installer, MSI, portable executable, hashes, and release notes.
-
-See `VERSIONING.md` for the release gate.
+- primary/fallback routing with weak and strong models;
+- structured-output behavior;
+- timeout/retry diagnostics;
+- provider-reported usage accounting.
 
 ## Later work
 
-These are useful but are not required to complete the current generic-learning refactor:
+These are useful but are not required for v1.5.0:
 
 - richer document formats beyond PDF;
-- optional OCR language packs and OCR quality controls;
+- optional bundled OCR language packs and OCR quality controls;
 - connector health/status diagnostics;
 - connector-specific ranking controls;
 - richer source metadata and provenance display;

@@ -21,6 +21,8 @@ export function CaptureDialog({ onClose, onCaptured }: CaptureDialogProps) {
   const [pdfText, setPdfText] = useState('')
   const [pdfTitle, setPdfTitle] = useState('')
   const [pdfPages, setPdfPages] = useState(0)
+  const [pdfOcrPages, setPdfOcrPages] = useState(0)
+  const [pdfProgress, setPdfProgress] = useState('')
   const [state, setState] = useState<CaptureState>('idle')
   const [error, setError] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
@@ -51,6 +53,8 @@ export function CaptureDialog({ onClose, onCaptured }: CaptureDialogProps) {
     setPdfText('')
     setPdfTitle('')
     setPdfPages(0)
+    setPdfOcrPages(0)
+    setPdfProgress('')
     setError('')
     if (!file) {
       setState('idle')
@@ -59,12 +63,19 @@ export function CaptureDialog({ onClose, onCaptured }: CaptureDialogProps) {
 
     setState('saving')
     try {
-      const result = await extractPdf(file)
+      const result = await extractPdf(file, (progress) => {
+        setPdfProgress(progress.phase === 'ocr'
+          ? `正在 OCR 第 ${progress.pageNumber}/${progress.pageCount} 页${typeof progress.progress === 'number' ? ` · ${Math.round(progress.progress * 100)}%` : ''}`
+          : `正在读取第 ${progress.pageNumber}/${progress.pageCount} 页`)
+      })
       setPdfText(result.text)
       setPdfTitle(result.title)
       setPdfPages(result.pageCount)
+      setPdfOcrPages(result.ocrPageCount)
+      setPdfProgress('')
       setState('idle')
     } catch (pdfError) {
+      setPdfProgress('')
       setState('error')
       setError(String(pdfError))
     }
@@ -213,9 +224,11 @@ export function CaptureDialog({ onClose, onCaptured }: CaptureDialogProps) {
               onChange={(event) => void selectPdf(event.target.files?.[0] || null)}
             />
             <small>
-              {pdfText
-                ? `已提取 ${pdfPages} 页 · ${pdfText.length.toLocaleString()} 字符`
-                : '本地解析 PDF，不上传原文件；扫描版 PDF 暂不做 OCR。'}
+              {pdfProgress
+                ? pdfProgress
+                : pdfText
+                  ? `已提取 ${pdfPages} 页 · ${pdfText.length.toLocaleString()} 字符${pdfOcrPages ? ` · OCR ${pdfOcrPages} 页` : ''}`
+                  : '本地解析 PDF；没有文本层的页面会自动 OCR，不上传原文件。'}
             </small>
           </label>
         )}

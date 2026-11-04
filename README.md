@@ -6,7 +6,7 @@ The core loop is **Capture → Inbox → Knowledge → Active Recall → Feedbac
 
 ## What LearnWeave Does
 
-- Capture selected desktop text, pasted text, public web URLs, and text-based PDFs.
+- Capture selected desktop text, pasted text, public web URLs, and PDFs, including scanned/image-only pages through OCR.
 - Use the optional Browser Helper to enrich selections from ordinary web pages; Zhihu keeps richer page-specific metadata.
 - Search external sources from **Discover**: Wikipedia, arXiv, Stack Overflow, Hacker News, RSS/Atom, Zhihu, Brave Search, Tavily, Exa, and user-defined HTTP/JSON connectors.
 - Route every saved learning source through the Inbox before it becomes formal knowledge.
@@ -26,7 +26,7 @@ You can open Capture from the sidebar, tray menu, or the global **Ctrl+Shift+Spa
 
 URL capture blocks localhost/private-network targets, validates redirect destinations, applies a 20-second timeout, and limits responses to 5 MB.
 
-PDF capture is local-only and currently extracts embedded text. Scanned/image-only PDFs need OCR before capture.
+PDF capture keeps the source file local. Embedded text is extracted directly; sparse or image-only pages automatically fall back to local Tesseract OCR and retain page markers in captured text. The OCR runtime/language data may be downloaded on first use, but the PDF itself is not uploaded.
 
 ## Discover and Connectors
 
@@ -82,7 +82,7 @@ Standard validation: pnpm check, pnpm build, cargo test --manifest-path src-taur
 - Tauri 2 / Rust
 - React 19 / TypeScript / Vite
 - SQLite via rusqlite
-- PDF.js for local PDF text extraction
+- PDF.js + Tesseract.js for local PDF text extraction and OCR
 - Windows UI Automation
 - Windows Credential Manager
 
