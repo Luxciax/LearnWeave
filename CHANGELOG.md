@@ -13,7 +13,7 @@ The project follows Semantic Versioning from v1.0.0 onward.
 ### Changed
 - Discover now routes built-in sources, Zhihu search and custom HTTP/JSON connectors through the common `SourceConnector` search boundary.
 - Connector metadata is centralized in the backend instead of duplicating Zhihu availability checks in the frontend.
-- Windows release CI now runs frontend build, Rust formatting, tests and Clippy before packaging, and publishes checksums for installers plus the portable executable.
+- Windows release CI now runs frontend type-check/build and Rust tests before packaging, and publishes checksums for installers plus the portable executable.
 
 ## [1.4.0] - 2026-09-15
 

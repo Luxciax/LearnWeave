@@ -36,7 +36,7 @@ The generic-learning code goals for this phase are implemented:
 Before publishing a stable LearnWeave release:
 
 - run frontend type-check and production build;
-- run Rust formatting, tests and Clippy;
+- run Rust tests against the locked dependency graph;
 - run Windows Tauri bundle build;
 - verify upgrade from an existing ZhiForge installation;
 - verify database/settings/credential fallback and migration;
