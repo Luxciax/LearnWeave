@@ -66,6 +66,10 @@ export interface SemanticSearchResult {
   usedExpansion: boolean
   expandedTerms: string[]
   candidateCount: number
+  expansionStatus: 'not_needed' | 'empty' | 'applied' | 'fallback'
+  expansionError: string | null
+  rerankStatus: 'not_needed' | 'applied' | 'fallback'
+  rerankError: string | null
   hits: SemanticSearchHit[]
 }
 

@@ -66,6 +66,10 @@ pub struct SemanticSearchResult {
     pub used_expansion: bool,
     pub expanded_terms: Vec<String>,
     pub candidate_count: i64,
+    pub expansion_status: String,
+    pub expansion_error: Option<String>,
+    pub rerank_status: String,
+    pub rerank_error: Option<String>,
     pub hits: Vec<SemanticSearchHit>,
 }
 
@@ -192,9 +196,18 @@ pub async fn knowledge_semantic_search(
     };
 
     let mut expanded_terms = Vec::new();
+    let mut expansion_status = "not_needed".to_string();
+    let mut expansion_error = None;
     if candidates.len() < EXPAND_BELOW {
-        if let Ok(terms) = expand_query_terms(&app, &query).await {
-            expanded_terms = terms;
+        match expand_query_terms(&app, &query).await {
+            Ok(terms) => {
+                expansion_status = if terms.is_empty() { "empty" } else { "applied" }.into();
+                expanded_terms = terms;
+            }
+            Err(error) => {
+                expansion_status = "fallback".into();
+                expansion_error = Some(semantic_diagnostic(&error));
+            }
         }
     }
 
@@ -227,11 +240,17 @@ pub async fn knowledge_semantic_search(
             used_expansion: !expanded_terms.is_empty(),
             expanded_terms,
             candidate_count: 0,
+            expansion_status,
+            expansion_error,
+            rerank_status: "not_needed".into(),
+            rerank_error: None,
             hits: Vec::new(),
         });
     }
 
     let candidate_count = candidates.len() as i64;
+    let mut rerank_status = "not_needed".to_string();
+    let mut rerank_error = None;
     let hits = if candidates.len() == 1 {
         vec![candidate_to_hit(
             &candidates[0],
@@ -259,7 +278,9 @@ pub async fn knowledge_semantic_search(
         )
         .await
         {
-            Ok(output) => output
+            Ok(output) => {
+                rerank_status = "applied".into();
+                output
                 .results
                 .into_iter()
                 .filter_map(|decision| {
@@ -271,8 +292,12 @@ pub async fn knowledge_semantic_search(
                         })
                 })
                 .take(limit)
-                .collect(),
-            Err(_) => candidates
+                .collect()
+            }
+            Err(error) => {
+                rerank_status = "fallback".into();
+                rerank_error = Some(semantic_diagnostic(&error));
+                candidates
                 .iter()
                 .filter(|candidate| candidate.local_match)
                 .take(limit)
@@ -284,7 +309,8 @@ pub async fn knowledge_semantic_search(
                         "本地检索命中；语义重排暂不可用".into(),
                     )
                 })
-                .collect(),
+                .collect()
+            }
         }
     };
 
@@ -293,6 +319,10 @@ pub async fn knowledge_semantic_search(
         used_expansion: !expanded_terms.is_empty(),
         expanded_terms,
         candidate_count,
+        expansion_status,
+        expansion_error,
+        rerank_status,
+        rerank_error,
         hits,
     })
 }
@@ -622,6 +652,29 @@ fn fts_expression(value: &str) -> String {
         .map(|part| format!("\"{}\"*", part.replace('"', "\"\"")))
         .collect::<Vec<_>>()
         .join(" AND ")
+}
+
+fn semantic_diagnostic(error: &str) -> String {
+    let normalized = error.to_ascii_lowercase();
+    if normalized.contains("api key")
+        || normalized.contains("provider")
+        || normalized.contains("route")
+        || normalized.contains("model")
+    {
+        return "学习 AI 路由或模型当前不可用".into();
+    }
+    if normalized.contains("timeout") || normalized.contains("timed out") {
+        return "语义模型请求超时".into();
+    }
+    if normalized.contains("json") || normalized.contains("schema") || normalized.contains("structured") {
+        return "语义模型返回格式不符合结构化约定".into();
+    }
+    let compact = error.split_whitespace().collect::<Vec<_>>().join(" ");
+    if compact.is_empty() {
+        "语义模型调用失败".into()
+    } else {
+        bounded(&compact, 180)
+    }
 }
 
 fn bounded(value: &str, max_chars: usize) -> String {
