@@ -64,6 +64,13 @@ https://github.com/Luxciax/LearnWeave/releases/latest
 
 The Windows workflow builds Tauri NSIS/MSI bundles and a portable executable when available.
 
+## Project Documentation
+
+- Current roadmap: [docs/ROADMAP.md](docs/ROADMAP.md)
+- Implementation progress and remaining work: [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md)
+- Documentation index: [docs/README.md](docs/README.md)
+- Release policy: [docs/VERSIONING.md](docs/VERSIONING.md)
+
 ## Development
 
 Requirements: Windows, Node.js 22+, pnpm, Rust stable with the MSVC toolchain, and the Tauri 2 Windows prerequisites.
