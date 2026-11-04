@@ -616,7 +616,9 @@ mod tests {
 
     #[test]
     fn builtin_connector_preserves_source_provenance() {
-        let connector = &BUILTIN_DISCOVERY_CONNECTORS[0];
+        let connector = BUILTIN_DISCOVERY_CONNECTORS.iter()
+            .find(|connector| connector.id == "wikipedia")
+            .expect("Wikipedia connector should be registered");
         let source = connector.to_source(&FetchedContent {
             url: Some("https://en.wikipedia.org/wiki/Rust".into()),
             title: Some("Rust".into()),
