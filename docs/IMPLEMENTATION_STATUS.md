@@ -77,7 +77,7 @@ Status meanings:
 | Custom HTTP / JSON | Done | User-configurable GET endpoint and field mappings exist. |
 | Connector API keys in Windows Credential Manager | Done | Paid/custom connector secrets are kept out of config files. |
 | Rust `SourceConnector` core interface | Done | Core trait, capability metadata, Web URL and Zhihu implementations exist. |
-| All Discover sources routed through `SourceConnector` | **Partial** | `discovery.rs` still directly dispatches Wikipedia/arXiv/Stack Exchange/HN/RSS/paid/custom connectors. |
+| All Discover sources routed through `SourceConnector` | **Partial** | Eight built-in sources now use a centralized registry with `SourceConnector` adapters rather than a hard-coded Discover dispatcher. Custom HTTP/JSON and the specialized Zhihu reader flow still need a fully shared runtime boundary. |
 | Live upstream E2E verification | **Verification pending** | Implementations exist, but every external service has not yet been validated with real live responses/keys. |
 
 ## AI routing and usage
@@ -128,7 +128,7 @@ For that final delta:
 
 The remaining work is intentionally small and concrete:
 
-1. Route all built-in Discover sources through the generic Connector runtime.
+1. Finish the shared Connector runtime boundary for custom HTTP/JSON and the specialized Zhihu reader flow; eight built-in Discover sources now use one registry and expose `SourceConnector` adapters.
 2. Add OCR for scanned/image-only PDFs.
 3. Perform live E2E verification for every external connector.
 4. Improve semantic-rerank diagnostics and capability handling.
@@ -143,3 +143,12 @@ At the time of this update, these are intentionally not part of the tracked proj
 - `preview/`
 
 Do not treat them as authoritative implementation status unless they are deliberately reviewed and committed later.
+
+## Connector registry follow-up (development branch)
+
+- Branch: `codex/connector-runtime-unification`.
+- Built-in Wikipedia, arXiv, Stack Exchange, Hacker News, RSS, Brave, Tavily, and Exa dispatch now uses a centralized registry; metadata and `SourceConnector` search adapters are provided by the same entries.
+- Added registry uniqueness and source-provenance tests.
+- The existing HTTP implementations and user-visible Discover result model remain unchanged.
+- **Verification pending:** neither Rust tests nor Windows CI were run for this branch in the current session. This change is not claimed as release-ready.
+- Remaining: unify custom connector execution and Zhihu's richer path; complete live upstream E2E verification.
