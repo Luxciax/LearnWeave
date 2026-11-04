@@ -1,13 +1,13 @@
-use std::time::Duration;
+use std::{future::Future, pin::Pin, time::Duration};
 
 use reqwest::{header::LOCATION, redirect::Policy, Client};
 use serde::Serialize;
 use serde_json::{json, Value};
 use tauri::State;
 
-use crate::settings::{schema::ContentConnectorProfile, SettingsState};
+use crate::{knowledge::SourceCaptureInput, settings::{schema::ContentConnectorProfile, SettingsState}};
 
-use super::{credential, web_url};
+use super::{credential, web_url, Capabilities, ConnectorError, ContentRef, FetchedContent, SourceConnector};
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
 const MAX_RESULTS: u32 = 20;
@@ -35,6 +35,99 @@ pub struct DiscoverResult {
     pub content_text: String,
 }
 
+// Every built-in Discover source is registered here rather than in the Tauri command.
+// A new built-in source only needs a search adapter and one catalog entry.
+type SearchFuture<'a> = Pin<Box<dyn Future<Output = Result<Vec<DiscoverResult>, String>> + Send + 'a>>;
+type SearchHandler = for<'a> fn(&'a Client, &'a str, u32) -> SearchFuture<'a>;
+
+struct BuiltinDiscoveryConnector {
+    id: &'static str,
+    label: &'static str,
+    kind: &'static str,
+    requires_key: bool,
+    query_hint: &'static str,
+    search_handler: SearchHandler,
+}
+
+impl BuiltinDiscoveryConnector {
+    async fn search_results(&self, client: &Client, query: &str, limit: u32) -> Result<Vec<DiscoverResult>, String> {
+        (self.search_handler)(client, query, limit).await
+    }
+}
+
+impl SourceConnector for BuiltinDiscoveryConnector {
+    fn id(&self) -> &'static str { self.id }
+
+    fn capabilities(&self) -> Capabilities {
+        Capabilities { search: true, fetch: false }
+    }
+
+    async fn search(&self, query: &str, limit: u32) -> Result<Vec<ContentRef>, ConnectorError> {
+        let client = discovery_client().map_err(ConnectorError::from)?;
+        let results = self.search_results(&client, query, limit.clamp(1, MAX_RESULTS))
+            .await.map_err(ConnectorError::from)?;
+        Ok(results.into_iter().map(|result| ContentRef {
+            locator: result.url.clone().unwrap_or_default(),
+            title: result.title,
+            snippet: result.snippet,
+            url: result.url,
+        }).collect())
+    }
+
+    fn to_source(&self, content: &FetchedContent, selection: Option<&str>) -> SourceCaptureInput {
+        SourceCaptureInput {
+            platform: "web".into(),
+            source_kind: Some("web".into()),
+            connector_id: Some(self.id.into()),
+            selected_text: selection.unwrap_or(&content.text).to_string(),
+            url: content.url.clone(),
+            title: content.title.clone(),
+            author: content.author.clone(),
+            context_before: None,
+            context_after: None,
+            application: None,
+            window_title: None,
+        }
+    }
+}
+
+fn discovery_client() -> Result<Client, String> {
+    Client::builder().timeout(REQUEST_TIMEOUT)
+        .user_agent("LearnWeave/1.5 knowledge discovery")
+        .build().map_err(|error| format!("failed to create connector client: {error}"))
+}
+
+macro_rules! search_adapter {
+    ($adapter:ident, $handler:ident) => {
+        fn $adapter<'a>(client: &'a Client, query: &'a str, limit: u32) -> SearchFuture<'a> {
+            Box::pin($handler(client, query, limit))
+        }
+    };
+}
+
+search_adapter!(search_wikipedia, wikipedia);
+search_adapter!(search_arxiv, arxiv);
+search_adapter!(search_stackexchange, stackexchange);
+search_adapter!(search_hacker_news, hacker_news);
+search_adapter!(search_brave, brave);
+search_adapter!(search_tavily, tavily);
+search_adapter!(search_exa, exa);
+
+fn search_rss<'a>(_client: &'a Client, query: &'a str, limit: u32) -> SearchFuture<'a> {
+    Box::pin(rss(query, limit))
+}
+
+const BUILTIN_DISCOVERY_CONNECTORS: &[BuiltinDiscoveryConnector] = &[
+    BuiltinDiscoveryConnector { id: "wikipedia", label: "Wikipedia", kind: "public", requires_key: false, query_hint: "搜索百科主题", search_handler: search_wikipedia },
+    BuiltinDiscoveryConnector { id: "arxiv", label: "arXiv", kind: "public", requires_key: false, query_hint: "搜索论文主题", search_handler: search_arxiv },
+    BuiltinDiscoveryConnector { id: "stackexchange", label: "Stack Overflow", kind: "public", requires_key: false, query_hint: "搜索技术问题", search_handler: search_stackexchange },
+    BuiltinDiscoveryConnector { id: "hacker-news", label: "Hacker News", kind: "public", requires_key: false, query_hint: "搜索技术文章", search_handler: search_hacker_news },
+    BuiltinDiscoveryConnector { id: "rss", label: "RSS / Atom", kind: "feed", requires_key: false, query_hint: "粘贴 RSS / Atom 地址", search_handler: search_rss },
+    BuiltinDiscoveryConnector { id: "brave", label: "Brave Search", kind: "paid", requires_key: true, query_hint: "搜索互联网", search_handler: search_brave },
+    BuiltinDiscoveryConnector { id: "tavily", label: "Tavily", kind: "paid", requires_key: true, query_hint: "搜索互联网", search_handler: search_tavily },
+    BuiltinDiscoveryConnector { id: "exa", label: "Exa", kind: "paid", requires_key: true, query_hint: "搜索互联网", search_handler: search_exa },
+];
+
 fn descriptor(id: &str, label: &str, kind: &str, requires_key: bool, query_hint: &str) -> DiscoverConnectorDescriptor {
     let configured = if requires_key {
         credential::load(id).map(|value| !value.trim().is_empty()).unwrap_or(false)
@@ -54,16 +147,9 @@ fn descriptor(id: &str, label: &str, kind: &str, requires_key: bool, query_hint:
 #[tauri::command]
 pub fn discover_connectors(state: State<'_, SettingsState>) -> Result<Vec<DiscoverConnectorDescriptor>, String> {
     let config = state.snapshot()?;
-    let mut items = vec![
-        descriptor("wikipedia", "Wikipedia", "public", false, "搜索百科主题"),
-        descriptor("arxiv", "arXiv", "public", false, "搜索论文主题"),
-        descriptor("stackexchange", "Stack Overflow", "public", false, "搜索技术问题"),
-        descriptor("hacker-news", "Hacker News", "public", false, "搜索技术文章"),
-        descriptor("rss", "RSS / Atom", "feed", false, "粘贴 RSS / Atom 地址"),
-        descriptor("brave", "Brave Search", "paid", true, "搜索互联网"),
-        descriptor("tavily", "Tavily", "paid", true, "搜索互联网"),
-        descriptor("exa", "Exa", "paid", true, "搜索互联网"),
-    ];
+    let mut items: Vec<_> = BUILTIN_DISCOVERY_CONNECTORS.iter().map(|connector| {
+        descriptor(connector.id, connector.label, connector.kind, connector.requires_key, connector.query_hint)
+    }).collect();
     items.extend(config.connectors.into_iter().filter(|item| item.enabled).map(|item| DiscoverConnectorDescriptor {
         id: item.id,
         label: item.name,
@@ -89,28 +175,16 @@ pub async fn discover_search(
     }
     let limit = limit.unwrap_or(10).clamp(1, MAX_RESULTS);
     let config = state.snapshot()?;
-    let client = Client::builder()
-        .timeout(REQUEST_TIMEOUT)
-        .user_agent("LearnWeave/1.5 knowledge discovery")
-        .build()
-        .map_err(|error| format!("failed to create connector client: {error}"))?;
-
-    match connector_id.as_str() {
-        "wikipedia" => wikipedia(&client, &query, limit).await,
-        "arxiv" => arxiv(&client, &query, limit).await,
-        "stackexchange" => stackexchange(&client, &query, limit).await,
-        "hacker-news" => hacker_news(&client, &query, limit).await,
-        "rss" => rss(&query, limit).await,
-        "brave" => brave(&client, &query, limit).await,
-        "tavily" => tavily(&client, &query, limit).await,
-        "exa" => exa(&client, &query, limit).await,
-        _ => {
-            let profile = config.connectors.iter()
-                .find(|item| item.enabled && item.id.eq_ignore_ascii_case(&connector_id))
-                .ok_or_else(|| format!("unknown or disabled connector '{connector_id}'"))?;
-            custom_json(&client, profile, &query, limit).await
-        }
+    let client = discovery_client()?;
+    if let Some(connector) = BUILTIN_DISCOVERY_CONNECTORS.iter()
+        .find(|item| item.id == connector_id)
+    {
+        return connector.search_results(&client, &query, limit).await;
     }
+    let profile = config.connectors.iter()
+        .find(|item| item.enabled && item.id.eq_ignore_ascii_case(&connector_id))
+        .ok_or_else(|| format!("unknown or disabled connector '{connector_id}'"))?;
+    custom_json(&client, profile, &query, limit).await
 }
 
 async fn json_response(response: reqwest::Response, label: &str) -> Result<Value, String> {
@@ -445,6 +519,31 @@ async fn fetch_public_feed(input: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn builtin_registry_has_unique_ids_and_search_capabilities() {
+        let mut ids = std::collections::HashSet::new();
+        for connector in BUILTIN_DISCOVERY_CONNECTORS {
+            assert!(ids.insert(connector.id), "duplicate connector: {}", connector.id);
+            assert!(connector.capabilities().search);
+            assert!(!connector.capabilities().fetch);
+        }
+        assert_eq!(ids.len(), 8);
+    }
+
+    #[test]
+    fn builtin_connector_preserves_source_provenance() {
+        let connector = &BUILTIN_DISCOVERY_CONNECTORS[0];
+        let source = connector.to_source(&FetchedContent {
+            url: Some("https://en.wikipedia.org/wiki/Rust".into()),
+            title: Some("Rust".into()),
+            author: Some("Contributors".into()),
+            text: "A systems language".into(),
+        }, Some("systems language"));
+        assert_eq!(source.source_kind.as_deref(), Some("web"));
+        assert_eq!(source.connector_id.as_deref(), Some("wikipedia"));
+        assert_eq!(source.selected_text, "systems language");
+    }
 
     #[test]
     fn json_path_reads_nested_values() {
